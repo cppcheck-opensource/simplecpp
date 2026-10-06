@@ -799,7 +799,8 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                 else
                     fileindex = location.fileIndex;
 
-                lineDirective(fileindex, line, location);
+                if (!dui.ignoreLineDirectives)
+                    lineDirective(fileindex, line, location);
             }
 
             continue;
@@ -3223,7 +3224,7 @@ std::pair<simplecpp::FileData *, bool> simplecpp::FileDataCache::tryload(FileDat
         return {id_it->second, false};
     }
 
-    auto *const data = new FileData {path, TokenList(path, filenames, {}, outputList)};
+    auto *const data = new FileData {path, TokenList(path, filenames, dui, outputList)};
 
     if (dui.removeComments)
         data->tokens.removeComments();
