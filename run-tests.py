@@ -80,7 +80,6 @@ todo = [
          'macro_rescan_varargs.c',
 
          # todo, high priority
-         'c99-6_10_3_4_p5.c',
          'c99-6_10_3_4_p6.c',
          'expr_usual_conversions.c', # condition is true: 4U - 30 >= 0
          'stdint.c',

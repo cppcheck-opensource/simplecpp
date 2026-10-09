@@ -2177,24 +2177,34 @@ namespace simplecpp {
             return &it->second;
         }
 
-        const Token *recursiveExpandToken(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens) const {
-            // Expand while the expansion result ends with the name of a function-like
-            // macro whose arguments are supplied by the tokens that follow it. Each round
-            // consumes that macro call from the token stream, so tok always advances.
+        /** Expand while the expansion result in @p temp ends with the name of a
+         *  function-like macro whose arguments are supplied by the tokens after @p tok.
+         *  Each round consumes that macro call from the token stream, so tok always
+         *  advances. The @p gatherCall callback copies the "( ... )" tokens that follow
+         *  @p lpar into its output list and returns the matching ')', or nullptr when no
+         *  complete call is available. Returns the last consumed token. */
+        template<class GatherCall>
+        const Token *expandTrailingCalls(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, GatherCall gatherCall) const {
             while (const Macro * const calledMacro = rescanMacro(temp, tok, macros, expandedmacros)) {
                 TokenList temp2(files);
-                temp2.push_back(new Token(temp.cback()->str(), tok->location));
+                temp2.push_back(new Token(temp.cback()->str(), tok->next->location));
 
-                const Token * const tok2 = appendTokens(temp2, loc, tok->next, macros, expandedmacros, parametertokens);
-                if (!tok2)
+                const Token * const closingPar = gatherCall(temp2, tok->next);
+                if (!closingPar)
                     break;
                 output.takeTokens(temp);
                 output.deleteToken(output.back());
                 calledMacro->expand(temp, loc, temp2.cfront(), macros, expandedmacros);
-                tok = tok2;
+                tok = closingPar;
             }
             output.takeTokens(temp);
-            return tok->next;
+            return tok;
+        }
+
+        const Token *recursiveExpandToken(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens) const {
+            return expandTrailingCalls(output, temp, loc, tok, macros, expandedmacros, [&](TokenList &temp2, const Token *lpar) {
+                return appendTokens(temp2, loc, lpar, macros, expandedmacros, parametertokens);
+            })->next;
         }
 
         const Token *expandToken(TokenList &output, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens) const {
@@ -2313,12 +2323,35 @@ namespace simplecpp {
                 return false;
             if (variadic && argnr + 1U >= parametertokens.size()) // empty variadic parameter
                 return true;
-            for (const Token *partok = parametertokens[argnr]->next; partok != parametertokens[argnr + 1U];) {
+            const Token * const argEnd = parametertokens[argnr + 1U];
+            for (const Token *partok = parametertokens[argnr]->next; partok != argEnd;) {
                 const MacroMap::const_iterator it = macros.find(partok->str());
                 if (it != macros.end() && !partok->isExpandedFrom(&it->second) && (partok->str() == name() || expandedmacros.find(partok->str()) == expandedmacros.end())) {
                     std::set<TokenString> expandedmacros2(expandedmacros); // temporary amnesia to allow reexpansion of currently expanding macros during argument evaluation
                     expandedmacros2.erase(name());
-                    partok = it->second.expand(output, loc, partok, macros, std::move(expandedmacros2));
+                    TokenList temp(files);
+                    partok = it->second.expand(temp, loc, partok, macros, std::move(expandedmacros2));
+                    if (partok->op == '(' && temp.cback() && temp.cback()->name) {
+                        // the expansion result may end with the name of a function-like
+                        // macro whose arguments are supplied by the remaining argument tokens
+                        std::set<TokenString> expandedmacros3(expandedmacros);
+                        expandedmacros3.erase(name());
+                        partok = expandTrailingCalls(output, temp, loc, partok->previous, macros, expandedmacros3, [&](TokenList &temp2, const Token *lpar) -> const Token * {
+                            unsigned int par = 0;
+                            for (const Token *tok2 = lpar; tok2 != argEnd; tok2 = tok2->next) {
+                                temp2.push_back(new Token(*tok2));
+                                if (tok2->op == '(') {
+                                    ++par;
+                                } else if (tok2->op == ')') {
+                                    if (--par == 0U)
+                                        return tok2;
+                                }
+                            }
+                            return nullptr;
+                        })->next;
+                    } else {
+                        output.takeTokens(temp);
+                    }
                 } else {
                     output.push_back(newMacroToken(partok->str(), loc, isReplaced(expandedmacros), partok));
                     output.back()->macro = partok->macro;

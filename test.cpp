@@ -989,6 +989,22 @@ static void define26()
                   "f ( ) ( )", preprocess(code2));
 }
 
+static void define27()
+{
+    // an expansion result inside a macro argument that is a function-like macro
+    // name must be rescanned against the remaining argument tokens
+    const char code[] = "#define o1(a) a()\n"
+                        "#define b(c, d) c##d\n"
+                        "#define l(c, d) b(c, 1)\n"
+                        "#define m(e, f)\n"
+                        "#define g(h, i) m(h, )\n"
+                        "#define j(h, i) g(h, )\n"
+                        "#define k() l(j(, ), )\n"
+                        "#define n(a) j(l(o, )(a), )\n"
+                        "n(k)\n";
+    ASSERT_EQUALS("", preprocess(code));
+}
+
 
 static void define_invalid_1()
 {
@@ -4588,6 +4604,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(define24);
     TEST_CASE(define25);
     TEST_CASE(define26);
+    TEST_CASE(define27);
     TEST_CASE(define_invalid_1);
     TEST_CASE(define_invalid_2);
     TEST_CASE(define_invalid_3);
