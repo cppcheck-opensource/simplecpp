@@ -3032,12 +3032,26 @@ long long simplecpp::characterLiteralToLL(const std::string& str)
     return multivalue;
 }
 
+static bool isFloatingPointLiteral(const std::string &str)
+{
+    if (!simplecpp::Token::isNumberLike(str) &&
+        !(str.size() > 1U && str[0] == '.' && std::isdigit(static_cast<unsigned char>(str[1]))))
+        return false;
+
+    if (str.find('.') != std::string::npos)
+        return true;
+
+    return str.find_first_of(isHex(str) ? "pP" : "eE") != std::string::npos;
+}
+
 /**
  * @throws std::runtime_error thrown on invalid literal
  */
 static void simplifyNumbers(simplecpp::TokenList &expr)
 {
     for (simplecpp::Token *tok = expr.front(); tok; tok = tok->next) {
+        if (isFloatingPointLiteral(tok->str()))
+            throw std::runtime_error("floating point literal in preprocessor expression");
         if (tok->str().size() == 1U)
             continue;
         if (tok->str().compare(0,2,"0x") == 0)
