@@ -2587,6 +2587,58 @@ static void ifUndefFuncStyleMacro()
     ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, undefined function-like macro invocation: A( ... )\n", toString(outputList));
 }
 
+static void testIfIntegerLiteral(const std::string &value, const std::string &literal, bool expectError)
+{
+    const std::string code = "#define A " + value + "\n"
+                             "#if A == " + literal + "\n"
+                             "int x = " + literal + ";\n"
+                             "#endif\n";
+
+    simplecpp::OutputList outputList;
+
+    std::string literalPreprocessed = literal;
+    if (literalPreprocessed[0] == '-')
+    {
+        literalPreprocessed = "- " + literalPreprocessed.substr(1);
+    }
+
+    if (expectError) {
+        ASSERT_EQUALS("", preprocess(code.c_str(), &outputList));
+        ASSERT_EQUALS("file0,2,syntax_error,failed to evaluate #if condition, invalid integer literal\n", toString(outputList));
+    } else {
+        ASSERT_EQUALS("\n\nint x = " + literalPreprocessed + " ;", preprocess(code.c_str(), &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
+}
+
+static void ifIntegerLiteral()
+{
+    testIfIntegerLiteral("123", "123", false);
+    testIfIntegerLiteral("-123", "-123", false);
+    testIfIntegerLiteral("123", "123Z", false);
+    testIfIntegerLiteral("123", "123UL", false);
+    testIfIntegerLiteral("-123", "-123LL", false);
+    testIfIntegerLiteral("123", "123z", false);
+    testIfIntegerLiteral("123", "123ul", false);
+    testIfIntegerLiteral("-123", "-123ll", false);
+
+    testIfIntegerLiteral("123", "0x7b", false);
+    testIfIntegerLiteral("-123", "-0x7b", false);
+
+    testIfIntegerLiteral("123", "0x7B", false);
+    testIfIntegerLiteral("-123", "-0x7B", false);
+
+    testIfIntegerLiteral("123", "0173", false);
+    testIfIntegerLiteral("-123", "-0173", false);
+
+    testIfIntegerLiteral("123", "0b1111011", false);
+    testIfIntegerLiteral("-123", "-0b1111011", false);
+
+    testIfIntegerLiteral("123", "0xGH", true);
+    testIfIntegerLiteral("123", "019", true);
+    testIfIntegerLiteral("123", "0b30", true);
+}
+
 static void location1()
 {
     const char *code;
@@ -4737,6 +4789,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifalt); // using "and", "or", etc
     TEST_CASE(ifexpr);
     TEST_CASE(ifUndefFuncStyleMacro);
+    TEST_CASE(ifIntegerLiteral);
 
     TEST_CASE(location1);
     TEST_CASE(location2);

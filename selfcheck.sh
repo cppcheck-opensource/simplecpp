@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 if [ -z "$SIMPLECPP_PATH" ]; then
   SIMPLECPP_PATH=.
