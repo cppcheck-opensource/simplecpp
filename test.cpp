@@ -4473,36 +4473,44 @@ static void macroUsage()
 }
 
 static void isAbsolutePath() {
-#ifdef _WIN32
-    ASSERT_EQUALS(true, simplecpp::isAbsolutePath("C:\\foo\\bar"));
-    ASSERT_EQUALS(true, simplecpp::isAbsolutePath("C:/foo/bar"));
-    ASSERT_EQUALS(true, simplecpp::isAbsolutePath("\\\\foo\\bar"));
+#if defined(_WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__MSYS__)
+    constexpr bool supportsWin = true;
+#else
+    constexpr bool supportsWin = false;
+#endif
 
+#if !defined(_WIN32) || defined(__MINGW32__)
+    constexpr bool supportsUnx = true;
+#else
+    constexpr bool supportsUnx = false;
+#endif
+
+    // valid Windows paths
+    ASSERT_EQUALS(supportsWin, simplecpp::isAbsolutePath("C:\\foo\\bar"));
+    ASSERT_EQUALS(supportsWin, simplecpp::isAbsolutePath("C:/foo/bar"));
+    ASSERT_EQUALS(supportsWin, simplecpp::isAbsolutePath("\\\\foo\\bar"));
+
+    // valid Unix paths
+    ASSERT_EQUALS(supportsUnx, simplecpp::isAbsolutePath("/foo/bar"));
+    ASSERT_EQUALS(supportsUnx, simplecpp::isAbsolutePath("/"));
+
+    // valid Windows and Unix paths
+    ASSERT_EQUALS(supportsWin || supportsUnx, simplecpp::isAbsolutePath("//host/foo/bar"));
+
+    // invalid paths
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("foo\\bar"));
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("foo/bar"));
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("foo.cpp"));
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("C:foo.cpp"));
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("C:foo\\bar.cpp"));
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("bar.cpp"));
-    //ASSERT_EQUALS(true, simplecpp::isAbsolutePath("\\")); // TODO
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("0:\\foo\\bar"));
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("0:/foo/bar"));
     ASSERT_EQUALS(false, simplecpp::isAbsolutePath("\\foo\\bar"));
+
+    //ASSERT_EQUALS(true, simplecpp::isAbsolutePath("\\")); // TODO
     //ASSERT_EQUALS(false, simplecpp::isAbsolutePath("\\\\")); // TODO
     //ASSERT_EQUALS(false, simplecpp::isAbsolutePath("//")); // TODO
-    ASSERT_EQUALS(false, simplecpp::isAbsolutePath("/foo/bar"));
-    ASSERT_EQUALS(false, simplecpp::isAbsolutePath("/"));
-#else
-    ASSERT_EQUALS(true, simplecpp::isAbsolutePath("/foo/bar"));
-    ASSERT_EQUALS(true, simplecpp::isAbsolutePath("/"));
-    ASSERT_EQUALS(true, simplecpp::isAbsolutePath("//host/foo/bar"));
-
-    ASSERT_EQUALS(false, simplecpp::isAbsolutePath("foo/bar"));
-    ASSERT_EQUALS(false, simplecpp::isAbsolutePath("foo.cpp"));
-    ASSERT_EQUALS(false, simplecpp::isAbsolutePath("C:\\foo\\bar"));
-    ASSERT_EQUALS(false, simplecpp::isAbsolutePath("C:/foo/bar"));
-    ASSERT_EQUALS(false, simplecpp::isAbsolutePath("\\\\foo\\bar"));
-#endif
 }
 
 // crashes detected by fuzzer
