@@ -817,8 +817,8 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
             if (ppTok->next && (ppTok->next->str() == "error" || ppTok->next->str() == "warning")) {
                 char prev = ' ';
                 while (stream.good() && (prev == '\\' || (ch != '\r' && ch != '\n'))) {
-                    currentToken += ch;
-                    prev = ch;
+                    currentToken += static_cast<char>(ch);
+                    prev = static_cast<char>(ch);
                     ch = stream.readChar();
                 }
                 stream.ungetChar();
@@ -845,7 +845,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
         if (isNameChar(ch)) {
             const bool num = !!std::isdigit(ch);
             while (stream.good() && isNameChar(ch)) {
-                currentToken += ch;
+                currentToken += static_cast<char>(ch);
                 ch = stream.readChar();
                 if (num && ch=='\'' && isNameChar(stream.peekChar()))
                     ch = stream.readChar();
@@ -857,14 +857,14 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
         // comment
         else if (ch == '/' && stream.peekChar() == '/') {
             while (stream.good() && ch != '\n') {
-                currentToken += ch;
+                currentToken += static_cast<char>(ch);
                 ch = stream.readChar();
                 if (ch == '\\') {
                     TokenString tmp;
-                    char tmp_ch = ch;
+                    char tmp_ch = static_cast<char>(ch);
                     while ((stream.good()) && (tmp_ch == '\\' || tmp_ch == ' ' || tmp_ch == '\t')) {
                         tmp += tmp_ch;
-                        tmp_ch = stream.readChar();
+                        tmp_ch = static_cast<char>(stream.readChar());
                     }
                     if (!stream.good()) {
                         break;
@@ -878,7 +878,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                         if (pos < check_portability.size() - 1U && check_portability[pos] == '\\')
                             portabilityBackslash(outputList, location);
                         ++multiline;
-                        tmp_ch = stream.readChar();
+                        tmp_ch = static_cast<char>(stream.readChar());
                         currentToken += '\n';
                     }
                     ch = tmp_ch;
@@ -895,7 +895,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
             (void)stream.readChar();
             ch = stream.readChar();
             while (stream.good()) {
-                currentToken += ch;
+                currentToken += static_cast<char>(ch);
                 if (currentToken.size() >= 4U && endsWith(currentToken, COMMENT_END))
                     break;
                 ch = stream.readChar();
@@ -927,11 +927,11 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
             // C++11 raw string literal
             if (ch == '\"' && !prefix.empty() && *cback()->str().rbegin() == 'R') {
                 std::string delim;
-                currentToken = ch;
+                currentToken = static_cast<char>(ch);
                 prefix.resize(prefix.size() - 1);
                 ch = stream.readChar();
                 while (stream.good() && ch != '(' && ch != '\n') {
-                    delim += ch;
+                    delim += static_cast<char>(ch);
                     ch = stream.readChar();
                 }
                 if (!stream.good() || ch == '\n') {
@@ -947,7 +947,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                 }
                 const std::string endOfRawString(')' + delim + currentToken);
                 while (stream.good() && (!endsWith(currentToken, endOfRawString) || currentToken.size() <= 1))
-                    currentToken += stream.readChar();
+                    currentToken += static_cast<char>(stream.readChar());
                 if (!endsWith(currentToken, endOfRawString)) {
                     if (outputList) {
                         Output err{
@@ -972,7 +972,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                 continue;
             }
 
-            currentToken = readUntil(stream,location,ch,ch,outputList);
+            currentToken = readUntil(stream,location,static_cast<char>(ch),static_cast<char>(ch),outputList);
             if (currentToken.size() < 2U)
                 // Error is reported by readUntil()
                 return;
@@ -1004,7 +1004,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
         }
 
         else {
-            currentToken += ch;
+            currentToken += static_cast<char>(ch);
         }
 
         if (*currentToken.begin() == '<') {
@@ -1075,7 +1075,7 @@ static bool isFloatSuffix(const simplecpp::Token *tok)
 {
     if (!tok || tok->str().size() != 1U)
         return false;
-    const char c = std::tolower(tok->str()[0]);
+    const char c = static_cast<char>(std::tolower(tok->str()[0]));
     return c == 'f' || c == 'l';
 }
 
@@ -1480,7 +1480,7 @@ std::string simplecpp::TokenList::readUntil(Stream &stream, const Location &loca
     bool backslash = false;
     char ch = 0;
     while (ch != end && ch != '\r' && ch != '\n' && stream.good()) {
-        ch = stream.readChar();
+        ch = static_cast<char>(stream.readChar());
         if (backslash && ch == '\n') {
             ch = 0;
             backslash = false;
@@ -1492,7 +1492,7 @@ std::string simplecpp::TokenList::readUntil(Stream &stream, const Location &loca
             bool update_ch = false;
             char next = 0;
             do {
-                next = stream.readChar();
+                next = static_cast<char>(stream.readChar());
                 if (next == '\r' || next == '\n') {
                     ret.erase(ret.size()-1U);
                     backslash = (next == '\r');
@@ -2945,7 +2945,7 @@ long long simplecpp::characterLiteralToLL(const std::string& str)
             case 'U': {
                 // universal character names have exactly 4 or 8 digits
                 const std::size_t ndigits = (escape == 'u' ? 4 : 8);
-                value = stringToULLbounded(str, pos, 16, ndigits, ndigits);
+                value = stringToULLbounded(str, pos, 16, static_cast<std::ptrdiff_t>(ndigits), ndigits);
 
                 // UTF-8 encodes code points above 0x7f in multiple code units
                 // code points above 0x10ffff are not allowed
@@ -3029,7 +3029,7 @@ long long simplecpp::characterLiteralToLL(const std::string& str)
 
     // All other cases are unsigned. Since long long is at least 64bit wide,
     // while the literals at most 32bit wide, the conversion preserves all values.
-    return multivalue;
+    return static_cast<long long>(multivalue);
 }
 
 /**
