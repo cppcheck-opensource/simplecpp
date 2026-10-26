@@ -325,10 +325,10 @@ namespace simplecpp {
         /** generates a token list from the given filename parameter */
         TokenList(const std::string &filename, std::vector<std::string> &filenames, const DUI &dui = {}, OutputList *outputList = nullptr);
         TokenList(const TokenList &other);
-        TokenList(TokenList &&other);
+        TokenList(TokenList &&other) noexcept;
         ~TokenList();
         TokenList &operator=(const TokenList &other);
-        TokenList &operator=(TokenList &&other);
+        TokenList &operator=(TokenList &&other) noexcept;
 
         void clear();
         bool empty() const {

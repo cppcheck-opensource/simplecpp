@@ -507,7 +507,7 @@ simplecpp::TokenList::TokenList(const TokenList &other) : frontToken(nullptr), b
     *this = other;
 }
 
-simplecpp::TokenList::TokenList(TokenList &&other) : frontToken(nullptr), backToken(nullptr), files(other.files)
+simplecpp::TokenList::TokenList(TokenList &&other) noexcept : frontToken(nullptr), backToken(nullptr), files(other.files)
 {
     *this = std::move(other);
 }
@@ -529,7 +529,7 @@ simplecpp::TokenList &simplecpp::TokenList::operator=(const TokenList &other)
     return *this;
 }
 
-simplecpp::TokenList &simplecpp::TokenList::operator=(TokenList &&other)
+simplecpp::TokenList &simplecpp::TokenList::operator=(TokenList &&other) noexcept
 {
     if (this != &other) {
         clear();
