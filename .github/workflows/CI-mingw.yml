@@ -16,12 +16,11 @@ jobs:
       matrix:
         compiler: [g++, clang++]
         # TODO: add MSYS after #556 is fixed
-        msystem: [MINGW32, MINGW64, CLANG64]
+        # MINGW32 was removed since MSYS2 is phasing out 32-bit environments
+        msystem: [MINGW64, CLANG64]
         include:
           #- msystem: MSYS
           #  pkg-prefix: ''
-          - msystem: MINGW32
-            pkg-prefix: 'mingw-w64-i686-'
           - msystem: MINGW64
             pkg-prefix: 'mingw-w64-x86_64-'
           - msystem: CLANG64
@@ -33,9 +32,6 @@ jobs:
         exclude:
           - msystem: CLANG64
             compiler: g++
-          # the mingw-w64-i686-clang package is no longer available
-          - msystem: MINGW32
-            compiler: clang++
       fail-fast: false
 
     runs-on: windows-2025
