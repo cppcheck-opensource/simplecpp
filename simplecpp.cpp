@@ -2252,33 +2252,40 @@ namespace simplecpp {
             }
 
             if (tok->str() == DEFINED) {
-                const Token * const tok2 = tok->next;
-                const Token * const tok3 = tok2 ? tok2->next : nullptr;
-                const Token * const tok4 = tok3 ? tok3->next : nullptr;
-                const Token *defToken = nullptr;
-                const Token *lastToken = nullptr;
-                if (sameline(tok, tok4) && tok2->op == '(' && tok3->name && tok4->op == ')') {
-                    defToken = tok3;
-                    lastToken = tok4;
-                } else if (sameline(tok,tok2) && tok2->name) {
-                    defToken = lastToken = tok2;
+                std::string macroName;
+                TokenList temp(files);
+                const Token *argTok = tok->next;
+                bool expectParen = false;
+                if (argTok->op == '(') {
+                    argTok = argTok->next;
+                    expectParen = true;
                 }
-                if (defToken) {
-                    std::string macroName = defToken->str();
-                    if (defToken->next && defToken->next->op == '#' && defToken->next->next && defToken->next->next->op == '#' && defToken->next->next->next && defToken->next->next->next->name && sameline(defToken,defToken->next->next->next)) {
-                        TokenList temp(files);
-                        if (expandArg(temp, defToken, parametertokens))
-                            macroName = temp.cback()->str();
-                        if (expandArg(temp, defToken->next->next->next, parametertokens))
-                            macroName += temp.cback() ? temp.cback()->str() : "";
-                        else
-                            macroName += defToken->next->next->next->str();
-                        lastToken = defToken->next->next->next;
+                while (argTok->name) {
+                    if (expandArg(temp, argTok, parametertokens))
+                        macroName += temp.cback() ? temp.cback()->str() : "";
+                    else
+                        macroName += argTok->str();
+                    argTok = argTok->next;
+                    if (!sameline(tok, argTok))
+                        break;
+                    if (argTok->str() == "#") {
+                        if (!argTok->next || argTok->next->str() != "#")
+                            throw Error(argTok->location, "Expected '#'");
+                        argTok = argTok->next->next;
+                        if (!sameline(tok, argTok) || !argTok->name)
+                            throw Error(argTok->location, "Expected name");
+                    } else {
+                        break;
                     }
-                    const bool def = (macros.find(macroName) != macros.end());
-                    output.push_back(newMacroToken(def ? "1" : "0", loc, true));
-                    return lastToken->next;
                 }
+                if (expectParen) {
+                    if (!sameline(tok, argTok) && argTok->op != ')')
+                        throw Error(argTok->location, "Expected ')'");
+                    argTok = argTok->next;
+                }
+                const bool def = (macros.find(macroName) != macros.end());
+                output.push_back(newMacroToken(def ? "1" : "0", loc, true));
+                return argTok;
             }
 
             output.push_back(newMacroToken(tok->str(), loc, true, tok));
