@@ -2038,6 +2038,26 @@ static void hashhash_universal_character_2()
     ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'A', Invalid ## usage when expanding 'A': Combining '\\U0104' and '0104' yields universal character '\\U01040104'. This is undefined behavior according to C standard chapter 5.1.1.2, paragraph 4.\n", toString(outputList));
 }
 
+// Regression test: ## result is a function-like macro whose '(' is not adjacent.
+// PAR-style indirection hides '(' behind a comma/parameter in the replacement text.
+// Previously caused [unknownMacro] and aborted TU expansion.
+static void hashhash_funclike_par_indirection()
+{
+    // Single dispatch: PREFIX_ ## kind → PREFIX_SCALAR, '(' separated by ','
+    ASSERT_EQUALS("\n\n\nint x",
+                  preprocess("#define PAR(a, ...) a __VA_ARGS__\n"
+                             "#define PREFIX_SCALAR(T, N) T N\n"
+                             "#define DISPATCH(kind, ...) PAR(PREFIX_ ## kind, (__VA_ARGS__))\n"
+                             "DISPATCH(SCALAR, int, x)\n"));
+
+    // Chained: two DISPATCH calls with different PREFIX_ specialisations
+    ASSERT_EQUALS("\n\n\n\nint x float arr [ 10 ]",
+                  preprocess("#define PAR(a, ...) a __VA_ARGS__\n"
+                             "#define PREFIX_SCALAR(T, N) T N\n"
+                             "#define PREFIX_ARRAY(T, N, S) T N[S]\n"
+                             "#define DISPATCH(kind, ...) PAR(PREFIX_ ## kind, (__VA_ARGS__))\n"
+                             "DISPATCH(SCALAR, int, x) DISPATCH(ARRAY, float, arr, 10)\n"));
+}
 
 static void has_include_1()
 {
@@ -4694,6 +4714,7 @@ static void runTests(int argc, char **argv, Input input)
     //    the behavior is undefined."
     TEST_CASE(hashhash_universal_character);
     TEST_CASE(hashhash_universal_character_2);
+    TEST_CASE(hashhash_funclike_par_indirection); // PAR-style ## indirection: '(' not adjacent to ## result
 
     // c++17 __has_include
     TEST_CASE(has_include_1);

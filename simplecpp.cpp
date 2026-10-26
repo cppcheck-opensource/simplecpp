@@ -2456,16 +2456,61 @@ namespace simplecpp {
                     output.deleteToken(A);
                     TokenList tokens(files);
                     tokens.push_back(new Token(strAB, tok->location));
-                    // for function like macros, push the (...)
-                    if (tokensB.empty() && sameline(B,B->next) && B->next->op=='(') {
-                        const MacroMap::const_iterator it = macros.find(strAB);
-                        if (it != macros.end() && expandedmacros.find(strAB) == expandedmacros.end() && it->second.functionLike()) {
-                            const Token * const tok2 = appendTokens(tokens, loc, B->next, macros, expandedmacros, parametertokens);
+                    // If strAB names a function-like macro, locate and append its argument list '(...)'
+                    // from the remaining replacement tokens, then expand the whole call.
+                    // 'forwardScan' is true when the argument list was consumed via the forward scan
+                    // path below (not adjacent), so that expandToken() is called instead of
+                    // the normal takeTokens() path even when expandResult is false.
+                    bool forwardScan = false;
+                    const MacroMap::const_iterator it = macros.find(strAB);
+                    const bool isFunctionLikeMacro = (it != macros.end() && expandedmacros.find(strAB) == expandedmacros.end() && it->second.functionLike());
+                    if (tokensB.empty() && isFunctionLikeMacro) {
+                        // Fast path: '(' is the very next token after B on the same line.
+                        const Token *lpar = (sameline(B, B->next) && B->next->op == '(') ? B->next : nullptr;
+                        if (!lpar && !expandResult) {
+                            // Forward-scan path: '(' is not immediately adjacent to B.
+                            // This handles PAR-style indirection patterns such as:
+                            //   #define PAR(a, ...) a __VA_ARGS__
+                            //   #define DISPATCH(kind, ...) PAR(PREFIX_ ## kind, (__VA_ARGS__))
+                            // where the '(' for PREFIX_kind belongs to the __VA_ARGS__ parameter
+                            // and is separated from B by a comma in the replacement text.
+                            // Only active in the appendTokens context (expandResult==false) to
+                            // avoid unintended side-effects inside the main expansion loop.
+                            for (const Token *scan = nextTok; sameline(B, scan); scan = scan->next) {
+                                if (scan->op == '(') {
+                                    // Found a literal '(' after skipping separators.
+                                    lpar = scan;
+                                    forwardScan = true;
+                                    break;
+                                }
+                                if (scan->op == ',') {
+                                    // Argument separator — skip and keep scanning.
+                                    continue;
+                                }
+                                if (scan->name) {
+                                    // Named token: expand it and check whether it starts with '(...)'
+                                    // (covers the case where __VA_ARGS__ expands to a parenthesised list).
+                                    TokenList expanded(files);
+                                    if (expandArg(expanded, scan, loc, macros, expandedmacros, parametertokens) &&
+                                        expanded.cfront() && expanded.cfront()->op == '(') {
+                                        for (Token *t = expanded.front(); t; t = t->next)
+                                            t->location = loc;
+                                        tokens.takeTokens(expanded);
+                                        nextTok = scan->next;
+                                        forwardScan = true;
+                                    }
+                                    break; // stop at any name token, whether consumed or not
+                                }
+                                break; // any other operator — stop scan
+                            }
+                        }
+                        if (lpar) {
+                            const Token * const tok2 = appendTokens(tokens, loc, lpar, macros, expandedmacros, parametertokens);
                             if (tok2)
                                 nextTok = tok2->next;
                         }
                     }
-                    if (expandResult)
+                    if (expandResult || forwardScan)
                         expandToken(output, loc, tokens.cfront(), macros, expandedmacros, parametertokens);
                     else
                         output.takeTokens(tokens);
