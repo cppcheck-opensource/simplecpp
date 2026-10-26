@@ -265,7 +265,7 @@ namespace simplecpp {
 
     /**
      * Command line preprocessor settings.
-     * On the command line these are configured by -D, -U, -I, --include, -std
+     * On the command line these are configured by -D, -U, -I, --include, -std, -P
      */
     struct SIMPLECPP_LIB DUI {
         DUI() = default;
@@ -276,6 +276,7 @@ namespace simplecpp {
         std::string std;
         bool clearIncludeCache{};
         bool removeComments{}; /** remove comment tokens from included files */
+        bool ignoreLineDirectives{}; /** -P: do not let #line directives affect location tracking */
     };
 
     /** List of tokens. */
