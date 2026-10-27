@@ -2176,10 +2176,11 @@ namespace simplecpp {
 
         /** Expand while the expansion result in @p temp ends with the name of a
          *  function-like macro whose arguments are supplied by the tokens after @p tok.
-         *  Each round consumes that macro call from the token stream, so tok always
-         *  advances. The @p gatherCall callback copies the "( ... )" tokens that follow
-         *  @p lpar into its output list and returns the matching ')', or nullptr when no
-         *  complete call is available. Returns the last consumed token. */
+         *  Each round consumes that macro call from the token stream. The @p gatherCall
+         *  callback copies the "( ... )" tokens that follow @p lpar into its output list
+         *  and returns the matching ')', or nullptr when no complete call is available.
+         *  Returns the first token that was not consumed (tok->next when no call was
+         *  expanded). */
         template<class GatherCall>
         const Token *expandTrailingCalls(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, GatherCall gatherCall) const {
             while (const Macro * const calledMacro = rescanMacro(temp, tok, macros, expandedmacros)) {
@@ -2195,13 +2196,13 @@ namespace simplecpp {
                 tok = closingPar;
             }
             output.takeTokens(temp);
-            return tok;
+            return tok->next;
         }
 
         const Token *recursiveExpandToken(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens) const {
             return expandTrailingCalls(output, temp, loc, tok, macros, expandedmacros, [&](TokenList &temp2, const Token *lpar) {
                 return appendTokens(temp2, loc, lpar, macros, expandedmacros, parametertokens);
-            })->next;
+            });
         }
 
         const Token *expandToken(TokenList &output, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens) const {
@@ -2345,7 +2346,7 @@ namespace simplecpp {
                                 }
                             }
                             return nullptr;
-                        })->next;
+                        });
                     } else {
                         output.takeTokens(temp);
                     }
