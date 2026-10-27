@@ -2293,6 +2293,60 @@ static void ifA()
     ASSERT_EQUALS("\nX", preprocess(code, dui));
 }
 
+static void ifFloatingPointLiteral() // #612
+{
+    simplecpp::OutputList outputList;
+    simplecpp::DUI dui;
+    dui.defines.emplace_back("A=1");
+
+    const char issue[] = "#if A == 1.0\n"
+                         "int i;\n"
+                         "#endif\n";
+    ASSERT_EQUALS("", preprocess(issue, dui, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, floating point literal in preprocessor expression\n", toString(outputList));
+
+    outputList.clear();
+
+    const char otherSpelling[] = "#if 0\n"
+                                 "#elif .5\n"
+                                 "int i;\n"
+                                 "#endif\n";
+    ASSERT_EQUALS("", preprocess(otherSpelling, &outputList));
+    ASSERT_EQUALS("file0,2,syntax_error,failed to evaluate #elif condition, floating point literal in preprocessor expression\n", toString(outputList));
+
+    outputList.clear();
+
+    const char exponent[] = "#if 1e3\n"
+                            "int i;\n"
+                            "#endif\n";
+    ASSERT_EQUALS("", preprocess(exponent, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, floating point literal in preprocessor expression\n", toString(outputList));
+
+    outputList.clear();
+
+    const char suffix[] = "#if 1.f\n"
+                          "int i;\n"
+                          "#endif\n";
+    ASSERT_EQUALS("", preprocess(suffix, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, floating point literal in preprocessor expression\n", toString(outputList));
+
+    outputList.clear();
+
+    const char hexadecimal[] = "#if 0x1p3\n"
+                               "int i;\n"
+                               "#endif\n";
+    ASSERT_EQUALS("", preprocess(hexadecimal, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, floating point literal in preprocessor expression\n", toString(outputList));
+
+    outputList.clear();
+
+    const char integer[] = "#if A == 1\n"
+                           "int i;\n"
+                           "#endif\n";
+    ASSERT_EQUALS("\nint i ;", preprocess(integer, dui, &outputList));
+    ASSERT_EQUALS("", toString(outputList));
+}
+
 static void ifCharLiteral()
 {
     const char code[] = "#if ('A'==0x41)\n"
@@ -4717,6 +4771,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifdef2);
     TEST_CASE(ifndef);
     TEST_CASE(ifA);
+    TEST_CASE(ifFloatingPointLiteral); // #612
     TEST_CASE(ifCharLiteral);
     TEST_CASE(ifDefined);
     TEST_CASE(ifDefinedNoPar);
