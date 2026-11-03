@@ -1038,6 +1038,123 @@ static void define27()
     ASSERT_EQUALS("", preprocess(code4));
 }
 
+static void define28()
+{
+    // a function-like macro name and its '(' are separated by a call that
+    // expands to nothing: the call is found when the substituted argument is
+    // rescanned, but not when the tokens are rescanned only once
+    const char code1[] = "#define EMPTY()\n"
+                         "#define EVAL(...) __VA_ARGS__\n"
+                         "#define HELLO() \"Hello World\"\n"
+                         "EVAL ( HELLO EMPTY() () )\n"
+                         "HELLO EMPTY() ()\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\"Hello World\"\n"
+                  "HELLO ( )", preprocess(code1));
+
+    // the macro that is being expanded is not expanded by that rescan, and the
+    // name stays unexpandable afterwards
+    const char code2[] = "#define EMPTY()\n"
+                         "#define EVAL(...) __VA_ARGS__\n"
+                         "#define ID(x) x\n"
+                         "EVAL(EVAL EMPTY() (1)) ID(EVAL(EVAL EMPTY() (2)))\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "EVAL ( 1 ) EVAL ( 2 )", preprocess(code2));
+
+    // calls found by the rescan are nested and their results are rescanned
+    // against the tokens that follow
+    const char code3[] = "#define EMPTY()\n"
+                         "#define EVAL(...) __VA_ARGS__\n"
+                         "#define ID(x) x\n"
+                         "#define HELLO() \"Hello World\"\n"
+                         "#define G1() G2\n"
+                         "#define G2() \"g2\"\n"
+                         "EVAL(ID EMPTY() (HELLO EMPTY() ())) EVAL(G1 EMPTY() () ())\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\"Hello World\" \"g2\"", preprocess(code3));
+
+    // parameters are substituted before the rescan: an empty parameter does
+    // not separate a macro name from its '(', and a parameter may hold more
+    // than the arguments of the call
+    const char code4[] = "#define EMPTY()\n"
+                         "#define HELLO() \"Hello World\"\n"
+                         "#define F(x) HELLO x ()\n"
+                         "#define G(x, y) x y\n"
+                         "#define H(x) EMPTY x\n"
+                         "F() F(EMPTY()) F(1) G(HELLO, ()) H(() 1)\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\"Hello World\" \"Hello World\" HELLO 1 ( ) \"Hello World\" 1", preprocess(code4));
+
+    // a macro name that the rescan has passed is not a call: DEFER and OBSTRUCT
+    // delay the expansion by one and two rescans
+    const char code5[] = "#define EMPTY()\n"
+                         "#define DEFER(id) id EMPTY()\n"
+                         "#define OBSTRUCT(...) __VA_ARGS__ DEFER(EMPTY)()\n"
+                         "#define EXPAND(...) __VA_ARGS__\n"
+                         "#define A() 123\n"
+                         "DEFER(A)() EXPAND(DEFER(A)())\n"
+                         "OBSTRUCT(A)() EXPAND(OBSTRUCT(A)()) EXPAND(EXPAND(OBSTRUCT(A)()))\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "A ( ) 123\n"
+                  "A EMPTY ( ) ( ) A ( ) 123", preprocess(code5));
+
+    // recursion through deferred expansion
+    const char code6[] = "#define EMPTY()\n"
+                         "#define DEFER(id) id EMPTY()\n"
+                         "#define OBSTRUCT(...) __VA_ARGS__ DEFER(EMPTY)()\n"
+                         "#define EXPAND(...) __VA_ARGS__\n"
+                         "#define EVAL(...) EVAL1(EVAL1(EVAL1(__VA_ARGS__)))\n"
+                         "#define EVAL1(...) EVAL2(EVAL2(EVAL2(__VA_ARGS__)))\n"
+                         "#define EVAL2(...) EVAL3(EVAL3(EVAL3(__VA_ARGS__)))\n"
+                         "#define EVAL3(...) __VA_ARGS__\n"
+                         "#define PRIMITIVE_CAT(a, ...) a ## __VA_ARGS__\n"
+                         "#define DEC(x) PRIMITIVE_CAT(DEC_, x)\n"
+                         "#define DEC_0 0\n"
+                         "#define DEC_1 0\n"
+                         "#define DEC_2 1\n"
+                         "#define DEC_3 2\n"
+                         "#define CHECK_N(x, n, ...) n\n"
+                         "#define CHECK(...) CHECK_N(__VA_ARGS__, 0,)\n"
+                         "#define PROBE(x) x, 1,\n"
+                         "#define NOT(x) CHECK(PRIMITIVE_CAT(NOT_, x))\n"
+                         "#define NOT_0 PROBE(~)\n"
+                         "#define COMPL(b) PRIMITIVE_CAT(COMPL_, b)\n"
+                         "#define COMPL_0 1\n"
+                         "#define COMPL_1 0\n"
+                         "#define BOOL(x) COMPL(NOT(x))\n"
+                         "#define IIF(c) PRIMITIVE_CAT(IIF_, c)\n"
+                         "#define IIF_0(t, ...) __VA_ARGS__\n"
+                         "#define IIF_1(t, ...) t\n"
+                         "#define IF(c) IIF(BOOL(c))\n"
+                         "#define EAT(...)\n"
+                         "#define WHEN(c) IF(c)(EXPAND, EAT)\n"
+                         "#define REPEAT(count, macro, ...) WHEN(count)(OBSTRUCT(REPEAT_INDIRECT)()(DEC(count), macro, __VA_ARGS__) OBSTRUCT(macro)(DEC(count), __VA_ARGS__))\n"
+                         "#define REPEAT_INDIRECT() REPEAT\n"
+                         "#define M(i, _) i\n"
+                         "REPEAT(2, M, ~)\n"
+                         "EVAL(REPEAT(3, M, ~))\n";
+    ASSERT_EQUALS(std::string(32, '\n') +
+                  "REPEAT_INDIRECT ( ) ( 1 , M , ~ ) M ( 1 , ~ )\n"
+                  "0 1 2", preprocess(code6));
+}
+
 
 static void define_invalid_1()
 {
@@ -4638,6 +4755,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(define25);
     TEST_CASE(define26);
     TEST_CASE(define27);
+    TEST_CASE(define28);
     TEST_CASE(define_invalid_1);
     TEST_CASE(define_invalid_2);
     TEST_CASE(define_invalid_3);

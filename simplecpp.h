@@ -165,7 +165,7 @@ namespace simplecpp {
         }
 
         Token(const Token &tok) :
-            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), string(tok.string), mExpandedFrom(tok.mExpandedFrom) {}
+            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), string(tok.string), mExpandedFrom(tok.mExpandedFrom), mSkippedByRescan(tok.mSkippedByRescan) {}
 
         Token &operator=(const Token &tok) = delete;
 
@@ -223,6 +223,17 @@ namespace simplecpp {
             mExpandedFrom.insert(m);
         }
 
+        /** The macro rescan has examined this token and passed it: a function-like
+         *  macro name that was not followed by '(' at that point. A '(' that comes
+         *  later does not make it a macro call, until the token is substituted into
+         *  a replacement list and rescanned again. */
+        bool isSkippedByRescan() const {
+            return mSkippedByRescan;
+        }
+        void setSkippedByRescan(bool skipped) {
+            mSkippedByRescan = skipped;
+        }
+
         void printAll() const;
         void printOut() const;
     private:
@@ -237,6 +248,7 @@ namespace simplecpp {
         TokenString string;
 
         std::set<const Macro*> mExpandedFrom;
+        bool mSkippedByRescan{};
     };
 
     /** Output from preprocessor */
