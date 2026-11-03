@@ -989,6 +989,55 @@ static void define26()
                   "f ( ) ( )", preprocess(code2));
 }
 
+static void define27()
+{
+    // an expansion result inside a macro argument that is a function-like macro
+    // name must be rescanned against the remaining argument tokens
+    const char code1[] = "#define f(x) [x]\n"
+                         "#define ID(x) x\n"
+                         "#define G() f\n"
+                         "ID(G()(1))\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "[ 1 ]", preprocess(code1));
+
+    // the rescanned call's arguments are themselves rescanned
+    const char code2[] = "#define f(x) [x]\n"
+                         "#define ID(x) x\n"
+                         "#define G() f\n"
+                         "ID(G()(G()(2)))\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "[ [ 2 ] ]", preprocess(code2));
+
+    // each rescan round must use the right set of already-expanded macros:
+    // A(1)->B, B(2)->A, A(3)->B, B(4)->A
+    const char code3[] = "#define ID(x) x\n"
+                         "#define A(x) B\n"
+                         "#define B(x) A\n"
+                         "ID(A(1)(2)(3)(4))\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "A", preprocess(code3));
+
+    // creduce'd fuzzer case: the missed rescan of o1(k) deferred the call to a
+    // context where j was wrongly blocked from expanding, so b pasted ')' and
+    // '1' into an invalid token that broke the parentheses of the m call
+    const char code4[] = "#define o1(a) a()\n"
+                         "#define b(c, d) c##d\n"
+                         "#define l(c, d) b(c, 1)\n"
+                         "#define m(e, f)\n"
+                         "#define g(h, i) m(h, )\n"
+                         "#define j(h, i) g(h, )\n"
+                         "#define k() l(j(, ), )\n"
+                         "#define n(a) j(l(o, )(a), )\n"
+                         "n(k)\n";
+    ASSERT_EQUALS("", preprocess(code4));
+}
+
 
 static void define_invalid_1()
 {
@@ -4588,6 +4637,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(define24);
     TEST_CASE(define25);
     TEST_CASE(define26);
+    TEST_CASE(define27);
     TEST_CASE(define_invalid_1);
     TEST_CASE(define_invalid_2);
     TEST_CASE(define_invalid_3);
