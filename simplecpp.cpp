@@ -2824,10 +2824,18 @@ static void simplifyHasInclude(simplecpp::TokenList &expr, const simplecpp::DUI 
 /** Evaluate name
  * @throws std::runtime_error thrown on undefined function-like macro
  */
-static void simplifyName(simplecpp::TokenList &expr)
+static void simplifyName(simplecpp::TokenList &expr, const simplecpp::DUI &dui)
 {
+    // In C++ and C23 the keywords true/false are 1/0 in #if expressions
+    const simplecpp::cstd_t cstd = simplecpp::getCStd(dui.std);
+    const bool hasTrueFalse = (cstd == simplecpp::CUnknown || cstd >= simplecpp::C23);
+
     for (simplecpp::Token *tok = expr.front(); tok; tok = tok->next) {
         if (tok->name) {
+            if (hasTrueFalse && (tok->str() == "true" || tok->str() == "false")) {
+                tok->setstr(tok->str() == "true" ? "1" : "0");
+                continue;
+            }
             static const std::set<std::string> altop{"and","or","bitand","bitor","compl","not","not_eq","xor"};
             if (altop.find(tok->str()) != altop.end()) {
                 bool alt;
@@ -3101,7 +3109,7 @@ static long long evaluate(simplecpp::TokenList &expr, const simplecpp::DUI &dui,
     simplifyComments(expr);
     simplifySizeof(expr, sizeOfType);
     simplifyHasInclude(expr, dui);
-    simplifyName(expr);
+    simplifyName(expr, dui);
     simplifyNumbers(expr);
     expr.constFold();
     // TODO: handle invalid expressions

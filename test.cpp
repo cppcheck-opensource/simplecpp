@@ -2609,6 +2609,24 @@ static void ifdiv0()
     ASSERT_EQUALS("", preprocess(code));
 }
 
+static void ifTrueFalse()
+{
+    const char code[] = "#if true && !false\n"
+                        "1\n"
+                        "#else\n"
+                        "2\n"
+                        "#endif\n";
+    simplecpp::DUI dui;
+    ASSERT_EQUALS("\n1", preprocess(code, dui, nullptr));
+    dui.std = "c++11";
+    ASSERT_EQUALS("\n1", preprocess(code, dui, nullptr));
+    dui.std = "c23";
+    ASSERT_EQUALS("\n1", preprocess(code, dui, nullptr));
+    // before C23, true and false are ordinary identifiers that evaluate to 0
+    dui.std = "c17";
+    ASSERT_EQUALS("\n\n\n2", preprocess(code, dui, nullptr));
+}
+
 static void ifalt()   // using "and", "or", etc
 {
     const char *code;
@@ -4794,6 +4812,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifif);
     TEST_CASE(ifoverflow);
     TEST_CASE(ifdiv0);
+    TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
     TEST_CASE(ifexpr);
     TEST_CASE(ifUndefFuncStyleMacro);
