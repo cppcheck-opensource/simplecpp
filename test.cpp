@@ -2490,6 +2490,16 @@ static void elif()
                          "3\n"
                          "#endif";
     ASSERT_EQUALS("\n\n\n\n\n3", preprocess(code3));
+
+    // #elif after a taken group must not be evaluated
+    const char code4[] = "#if 1\n"
+                         "1\n"
+                         "#elif 1/0\n"
+                         "2\n"
+                         "#elif garbage(\n"
+                         "3\n"
+                         "#endif";
+    ASSERT_EQUALS("\n1", preprocess(code4));
 }
 
 static void elifdef()

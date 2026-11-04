@@ -3839,9 +3839,12 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                     return;
                 }
 
+                const bool isElif = (rawtok->str() == ELIF || rawtok->str() == ELIFDEF || rawtok->str() == ELIFNDEF);
+
                 bool conditionIsTrue;
-                if (ifstates.top() == AlwaysFalse || (ifstates.top() == ElseIsTrue && rawtok->str() != ELIF &&
-                                                      rawtok->str() != ELIFDEF && rawtok->str() != ELIFNDEF)) {
+                // An #if is only evaluated in an active group. An #elif is only evaluated
+                // if no previous group was taken; otherwise it is skipped (C 6.10.1p6).
+                if (isElif ? (ifstates.top() != ElseIsTrue) : (ifstates.top() != True)) {
                     conditionIsTrue = false;
                 }
                 else if (rawtok->str() == IFDEF || rawtok->str() == ELIFDEF) {
