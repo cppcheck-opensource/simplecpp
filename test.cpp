@@ -1066,21 +1066,23 @@ static void define28()
                   "EVAL ( 1 ) EVAL ( 2 )", preprocess(code2));
 
     // calls found by the rescan are nested and their results are rescanned
-    // against the tokens that follow
+    // against the tokens that follow, which can be a parameter
     const char code3[] = "#define EMPTY()\n"
                          "#define EVAL(...) __VA_ARGS__\n"
                          "#define ID(x) x\n"
                          "#define HELLO() \"Hello World\"\n"
                          "#define G1() G2\n"
                          "#define G2() \"g2\"\n"
-                         "EVAL(ID EMPTY() (HELLO EMPTY() ())) EVAL(G1 EMPTY() () ())\n";
+                         "#define F(x) G1 () x\n"
+                         "EVAL(ID EMPTY() (HELLO EMPTY() ())) EVAL(G1 EMPTY() () ()) F(())\n";
     ASSERT_EQUALS("\n"
                   "\n"
                   "\n"
                   "\n"
                   "\n"
                   "\n"
-                  "\"Hello World\" \"g2\"", preprocess(code3));
+                  "\n"
+                  "\"Hello World\" \"g2\" \"g2\"", preprocess(code3));
 
     // parameters are substituted before the rescan: an empty parameter does
     // not separate a macro name from its '(', and a parameter may hold more
