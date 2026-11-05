@@ -2222,27 +2222,27 @@ namespace simplecpp {
          *  the parameter that supplied the arguments, or nullptr when there is no
          *  call. */
         const Token *gatherCallAfter(TokenList &call, const Token *nameTok, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens) const {
-            TokenList args(files);
+            TokenList callArgs(files);
             const Token *last = nullptr;
             for (const Token *after = tok->next; sameline(tok, after); after = after->next) {
                 if (after->op == '(') {
-                    last = appendTokens(args, loc, after, macros, expandedmacros, parametertokens);
+                    last = appendTokens(callArgs, loc, after, macros, expandedmacros, parametertokens);
                     break;
                 }
-                if (!expandArg(args, after, loc, macros, expandedmacros, parametertokens))
+                if (!expandArg(callArgs, after, loc, macros, expandedmacros, parametertokens))
                     break;
                 // a parameter that expands to nothing is substituted before the rescan,
                 // so it does not separate the macro name from its '('
-                if (args.cfront()) {
-                    if (args.cfront()->op == '(')
+                if (callArgs.cfront()) {
+                    if (callArgs.cfront()->op == '(')
                         last = after;
                     break;
                 }
             }
             if (!last)
                 return nullptr;
-            call.push_back(new Token(nameTok->str(), args.cfront()->location));
-            call.takeTokens(args);
+            call.push_back(new Token(nameTok->str(), callArgs.cfront()->location));
+            call.takeTokens(callArgs);
             return last;
         }
 
