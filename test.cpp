@@ -1728,6 +1728,33 @@ static void hashEscape()
                   "\"L\\\"a\\\\\\\"b\\\"\"", preprocess(code));
 }
 
+static void hashEscapeTrailingBackslash()
+{
+    // an odd number of trailing backslashes would escape the closing quote
+    const char msg[] = "Invalid # usage when expanding 'str': Stringified argument ends with an odd number of backslashes, "
+                       "which is undefined behavior according to C standard chapter 6.10.3.2, paragraph 2.\n";
+    {
+        const char code[] = "#define str(x) #x\n"
+                            "str(\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,2,syntax_error,failed to expand 'str', ") + msg, toString(outputList));
+    }
+    {
+        const char code[] = "#define str(x) #x\n"
+                            "str(a\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,2,syntax_error,failed to expand 'str', ") + msg, toString(outputList));
+    }
+    {
+        // even number of backslashes is fine
+        const char code[] = "#define str(x) #x\n"
+                            "str(\\\\)";
+        ASSERT_EQUALS("\n\"\\\\\"", preprocess(code));
+    }
+}
+
 static void hashhash1()   // #4703
 {
     const char code[] = "#define MACRO( A, B, C ) class A##B##C##Creator {};\n"
@@ -4754,6 +4781,7 @@ static void runTests(int argc, char **argv, Input input)
 
     TEST_CASE(hash);
     TEST_CASE(hashEscape);
+    TEST_CASE(hashEscapeTrailingBackslash);
     TEST_CASE(hashhash1);
     TEST_CASE(hashhash2);
     TEST_CASE(hashhash3);

@@ -1797,6 +1797,16 @@ namespace simplecpp {
             wrongNumberOfParameters(const Location &loc, const std::string &macroName) : Error(loc, "Wrong number of parameters for macro \'" + macroName + "\'.") {}
         };
 
+        /** Struct that is thrown when there is invalid # usage */
+        struct invalidHash : public Error {
+            invalidHash(const Location &loc, const std::string &macroName, const std::string &message)
+                : Error(loc, "Invalid # usage when expanding \'" + macroName + "\': " + message) {}
+
+            static inline invalidHash unterminatedString(const Location &loc, const std::string &macroName) {
+                return {loc, macroName, "Stringified argument ends with an odd number of backslashes, which is undefined behavior according to C standard chapter 6.10.3.2, paragraph 2."};
+            }
+        };
+
         /** Struct that is thrown when there is invalid ## usage */
         struct invalidHashHash : public Error {
             static inline std::string format(const std::string &macroName, const std::string &message) {
@@ -2394,16 +2404,21 @@ namespace simplecpp {
             TokenList tokenListHash(files);
             const MacroMap macros2; // temporarily bypass macro expansion
             tok = expandToken(tokenListHash, loc, tok->next, macros2, expandedmacros, parametertokens);
-            std::ostringstream ostr;
-            ostr << '\"';
+            std::string str;
             for (const Token *hashtok = tokenListHash.cfront(), *next; hashtok; hashtok = next) {
                 next = hashtok->next;
-                ostr << stringifyToken(hashtok->str());
+                str += stringifyToken(hashtok->str());
                 if (next && hashtok->whitespaceahead)
-                    ostr << ' ';
+                    str += ' ';
             }
-            ostr << '\"';
-            output.push_back(newMacroToken(ostr.str(), loc, isReplaced(expandedmacros)));
+            // An odd number of trailing backslashes would escape the closing quote and
+            // yield an unterminated string literal (undefined behavior, C 6.10.3.2p2).
+            std::size_t trailing = 0;
+            while (trailing < str.size() && str[str.size() - 1U - trailing] == '\\')
+                ++trailing;
+            if (trailing % 2U == 1U)
+                throw invalidHash::unterminatedString(loc, name());
+            output.push_back(newMacroToken('\"' + str + '\"', loc, isReplaced(expandedmacros)));
             return tok;
         }
 
