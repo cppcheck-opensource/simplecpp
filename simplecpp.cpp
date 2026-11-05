@@ -642,6 +642,23 @@ static bool isStringLiteralPrefix(const std::string &str)
            str == "R" || str == "uR" || str == "UR" || str == "LR" || str == "u8R";
 }
 
+/** Spelling of a token in the result of the # operator: a \ is inserted
+ *  before each " and \ of a string literal or character constant (C 6.10.3.2p2) */
+static std::string stringifyToken(const std::string &str)
+{
+    const std::string::size_type quote = str.find_first_of("\"\'");
+    if (quote == std::string::npos || str.back() != str[quote] ||
+        (quote > 0 && !isStringLiteralPrefix(str.substr(0, quote))))
+        return str;
+    std::string ret;
+    for (const char c : str) {
+        if (c == '\\' || c == '\"')
+            ret += '\\';
+        ret += c;
+    }
+    return ret;
+}
+
 void simplecpp::TokenList::lineDirective(unsigned int fileIndex_, unsigned int line, Location &location)
 {
     if (fileIndex_ != location.fileIndex || line >= location.line) {
@@ -2381,12 +2398,12 @@ namespace simplecpp {
             ostr << '\"';
             for (const Token *hashtok = tokenListHash.cfront(), *next; hashtok; hashtok = next) {
                 next = hashtok->next;
-                ostr << hashtok->str();
+                ostr << stringifyToken(hashtok->str());
                 if (next && hashtok->whitespaceahead)
                     ostr << ' ';
             }
             ostr << '\"';
-            output.push_back(newMacroToken(escapeString(ostr.str()), loc, isReplaced(expandedmacros)));
+            output.push_back(newMacroToken(ostr.str(), loc, isReplaced(expandedmacros)));
             return tok;
         }
 

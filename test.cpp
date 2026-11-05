@@ -1709,6 +1709,25 @@ static void hash()
                              "STR(X(Y,Y))"));
 }
 
+static void hashEscape()
+{
+    // a \ is only inserted before " and \ inside string literals and character constants
+    const char code[] = "#define str(x) #x\n"
+                        "str(\\n)\n"
+                        "str(: @\\n)\n"
+                        "str(\"\\n\")\n"
+                        "str('\\4')\n"
+                        "str('\"')\n"
+                        "str(L\"a\\\"b\")";
+    ASSERT_EQUALS("\n"
+                  "\"\\n\"\n"
+                  "\": @\\n\"\n"
+                  "\"\\\"\\\\n\\\"\"\n"
+                  "\"'\\\\4'\"\n"
+                  "\"'\\\"'\"\n"
+                  "\"L\\\"a\\\\\\\"b\\\"\"", preprocess(code));
+}
+
 static void hashhash1()   // #4703
 {
     const char code[] = "#define MACRO( A, B, C ) class A##B##C##Creator {};\n"
@@ -4734,6 +4753,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(garbage_endif);
 
     TEST_CASE(hash);
+    TEST_CASE(hashEscape);
     TEST_CASE(hashhash1);
     TEST_CASE(hashhash2);
     TEST_CASE(hashhash3);
