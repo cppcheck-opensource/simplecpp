@@ -2532,6 +2532,27 @@ static void ifLogical()
     ASSERT_EQUALS("\nX", preprocess(code, dui));
 }
 
+static void ifLogicalPrecedence()
+{
+    // && has higher precedence than ||
+    const char code1[] = "#if 1 || 1 && 0\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("\nX", preprocess(code1));
+    const char code2[] = "#if 1 or 1 and 0\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("\nX", preprocess(code2));
+    const char code3[] = "#if 0 && 1 || 1\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("\nX", preprocess(code3));
+    const char code4[] = "#if 0 || 1 && 0\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("", preprocess(code4));
+}
+
 static void ifSizeof()
 {
     const char code[] = "#if sizeof(unsigned short)==2\n"
@@ -4887,6 +4908,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifDefinedHashHash);
     TEST_CASE(ifDefinedHashHash2);
     TEST_CASE(ifLogical);
+    TEST_CASE(ifLogicalPrecedence);
     TEST_CASE(ifSizeof);
     TEST_CASE(elif);
     TEST_CASE(elifdef);

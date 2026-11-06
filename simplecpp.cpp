@@ -1422,30 +1422,36 @@ void simplecpp::TokenList::constFoldBitwise(Token *tok)
 static const std::string OR("or");
 void simplecpp::TokenList::constFoldLogicalOp(Token *tok)
 {
-    for (; tok && tok->op != ')'; tok = tok->next) {
-        if (tok->name) {
-            if (isAlternativeBinaryOp(tok,AND))
-                tok->setstr("&&");
-            else if (isAlternativeBinaryOp(tok,OR))
-                tok->setstr("||");
+    for (Token *t = tok; t && t->op != ')'; t = t->next) {
+        if (t->name) {
+            if (isAlternativeBinaryOp(t,AND))
+                t->setstr("&&");
+            else if (isAlternativeBinaryOp(t,OR))
+                t->setstr("||");
         }
-        if (tok->str() != "&&" && tok->str() != "||")
-            continue;
-        if (!tok->previous || !tok->previous->number)
-            continue;
-        if (!tok->next || !tok->next->number)
-            continue;
+    }
 
-        int result;
-        if (tok->str() == "||")
-            result = (stringToLL(tok->previous->str()) || stringToLL(tok->next->str()));
-        else /*if (tok->str() == "&&")*/
-            result = (stringToLL(tok->previous->str()) && stringToLL(tok->next->str()));
+    // && has higher precedence than ||
+    for (const char *op : {"&&", "||"}) {
+        for (Token *t = tok; t && t->op != ')'; t = t->next) {
+            if (t->str() != op)
+                continue;
+            if (!t->previous || !t->previous->number)
+                continue;
+            if (!t->next || !t->next->number)
+                continue;
 
-        tok = tok->previous;
-        tok->setstr(toString(result));
-        deleteToken(tok->next);
-        deleteToken(tok->next);
+            int result;
+            if (t->str() == "||")
+                result = (stringToLL(t->previous->str()) || stringToLL(t->next->str()));
+            else /*if (t->str() == "&&")*/
+                result = (stringToLL(t->previous->str()) && stringToLL(t->next->str()));
+
+            t = t->previous;
+            t->setstr(toString(result));
+            deleteToken(t->next);
+            deleteToken(t->next);
+        }
     }
 }
 
