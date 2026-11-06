@@ -279,6 +279,7 @@ int main(int argc, char **argv)
             case simplecpp::Output::PORTABILITY_BACKSLASH:
             case simplecpp::Output::PORTABILITY_LINE_DIRECTIVE:
             case simplecpp::Output::PORTABILITY_NO_EOF_NEWLINE:
+            case simplecpp::Output::PORTABILITY_STRINGIFY:
                 std::cerr << "portability: ";
                 break;
             case simplecpp::Output::UNHANDLED_CHAR_ERROR:

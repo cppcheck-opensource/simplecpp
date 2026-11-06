@@ -251,6 +251,7 @@ namespace simplecpp {
             PORTABILITY_BACKSLASH,
             PORTABILITY_LINE_DIRECTIVE,
             PORTABILITY_NO_EOF_NEWLINE,
+            PORTABILITY_STRINGIFY,
             UNHANDLED_CHAR_ERROR,
             EXPLICIT_INCLUDE_NOT_FOUND,
             FILE_NOT_FOUND,
