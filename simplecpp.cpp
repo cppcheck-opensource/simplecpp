@@ -160,6 +160,25 @@ static bool sameline(const simplecpp::Token *tok1, const simplecpp::Token *tok2)
     return tok1 && tok2 && tok1->location.sameline(tok2->location);
 }
 
+/** is s a punctuator (C11 6.4.6, C++ [lex.operators]) */
+static bool isPunctuator(const std::string &s)
+{
+    static const std::set<std::string> punctuators{
+        "[", "]", "(", ")", "{", "}", ".", "->", "++", "--", "&", "*", "+", "-", "~", "!",
+        "/", "%", "<<", ">>", "<", ">", "<=", ">=", "==", "!=", "^", "|", "&&", "||",
+        "?", ":", ";", "...", "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=", "^=", "|=",
+        ",", "#", "##", "<:", ":>", "<%", "%>", "%:", "%:%:", "::", ".*", "->*", "<=>"
+    };
+    return punctuators.find(s) != punctuators.end();
+}
+
+/** is s a valid result when a punctuator is pasted with ## */
+static bool isValidPunctuatorPaste(const std::string &s)
+{
+    // a pp-number can start with '.'
+    return isPunctuator(s) || (s.size() >= 2 && s[0] == '.' && std::isdigit(static_cast<unsigned char>(s[1])));
+}
+
 static bool isAlternativeBinaryOp(const simplecpp::Token *tok, const std::string &alt)
 {
     return (tok->name &&
@@ -2458,17 +2477,17 @@ namespace simplecpp {
             if (!sameline(tok, tok->next) || !sameline(tok, tok->next->next))
                 throw invalidHashHash::unexpectedNewline(tok->location, name());
 
-            const bool canBeConcatenatedWithEqual = A->isOneOf("+-*/%&|^") || A->str() == "<<" || A->str() == ">>";
             const bool canBeConcatenatedStringOrChar = isStringLiteral(A->str()) || isCharLiteral(A->str());
-            const bool unexpectedA = (!A->name && !A->number && !A->str().empty() && !canBeConcatenatedWithEqual && !canBeConcatenatedStringOrChar);
+            // A is a punctuator; the result is checked when B has been expanded
+            const bool punctuatorA = (!A->name && !A->number && !A->str().empty() && !canBeConcatenatedStringOrChar);
 
             const Token * const B = tok->next->next;
-            if (!B->name && !B->number && B->op && !B->isOneOf("#="))
-                throw invalidHashHash::unexpectedToken(tok->location, name(), B);
-
-            if ((canBeConcatenatedWithEqual && B->op != '=') ||
-                (!canBeConcatenatedWithEqual && B->op == '='))
-                throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
+            if (!punctuatorA) {
+                if (!B->name && !B->number && B->op && !B->isOneOf("#="))
+                    throw invalidHashHash::unexpectedToken(tok->location, name(), B);
+                if (B->op == '=')
+                    throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
+            }
 
             // Superficial check; more in-depth would in theory be possible _after_ expandArg
             if (canBeConcatenatedStringOrChar && (B->number || !B->name))
@@ -2500,16 +2519,15 @@ namespace simplecpp {
                     else if (varargs && A->op == ',') {
                         strAB = ",";
                     }
-                    else if (varargs && unexpectedA) {
-                        throw invalidHashHash::unexpectedToken(tok->location, name(), A);
-                    }
                     else {
+                        if (punctuatorA && !isValidPunctuatorPaste(A->str() + tokensB.cfront()->str()))
+                            throw invalidHashHash::cannotCombine(tok->location, name(), A, tokensB.cfront());
                         strAB = A->str() + tokensB.cfront()->str();
                         tokensB.deleteToken(tokensB.front());
                     }
                 } else {
-                    if (unexpectedA)
-                        throw invalidHashHash::unexpectedToken(tok->location, name(), A);
+                    if (punctuatorA && !isValidPunctuatorPaste(A->str() + B->str()))
+                        throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
                     strAB = A->str() + B->str();
                 }
 
