@@ -229,6 +229,9 @@ static std::string toString(const simplecpp::OutputList &outputList)
         case simplecpp::Output::Type::PORTABILITY_NO_EOF_NEWLINE:
             ostr << "portability_no_eof_newline,";
             break;
+        case simplecpp::Output::Type::PORTABILITY_STRINGIFY:
+            ostr << "portability_stringify,";
+            break;
         case simplecpp::Output::Type::UNHANDLED_CHAR_ERROR:
             ostr << "unhandled_char_error,";
             break;
@@ -1707,6 +1710,83 @@ static void hash()
                              "#define STR_(x)   #x\n"
                              "#define STR(x)    STR_(x)\n"
                              "STR(X(Y,Y))"));
+}
+
+static void hashEscape()
+{
+    // a \ is only inserted before " and \ inside string literals and character constants
+    const char code[] = "#define str(x) #x\n"
+                        "str(\\n)\n"
+                        "str(: @\\n)\n"
+                        "str(\"\\n\")\n"
+                        "str('\\4')\n"
+                        "str('\"')\n"
+                        "str(L\"a\\\"b\")";
+    ASSERT_EQUALS("\n"
+                  "\"\\n\"\n"
+                  "\": @\\n\"\n"
+                  "\"\\\"\\\\n\\\"\"\n"
+                  "\"'\\\\4'\"\n"
+                  "\"'\\\"'\"\n"
+                  "\"L\\\"a\\\\\\\"b\\\"\"", preprocess(code));
+}
+
+static void hashEscapeTrailingBackslash()
+{
+    // an odd number of trailing backslashes would escape the closing quote,
+    // the final backslash is dropped (like gcc and clang) and a warning is reported
+    const char msg[] = "Invalid string literal when expanding 'str', ignoring final '\\'. "
+                       "Undefined behavior according to C standard chapter 6.10.3.2, paragraph 2.\n";
+    {
+        const char code[] = "int x;\n"
+                            "#define str(x) #x\n"
+                            "str(\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("int x ;\n\n\"\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,3,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        const char code[] = "#define str(x) #x\n"
+                            "str(a\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\"a\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // three backslashes
+        const char code[] = "#define str(x) #x\n"
+                            "str(\\\\\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\"\\\\\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // # in a nested macro
+        const char code[] = "#define str(x) #x\n"
+                            "#define T(x) str(x)\n"
+                            "T(\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\n\"\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,3,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // in a #if expression
+        const char code[] = "#define str(x) #x\n"
+                            "#if 1 || str(\\)\n"
+                            "A\n"
+                            "#endif\n";
+        simplecpp::OutputList outputList;
+        preprocess(code, &outputList);
+        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // even number of backslashes is fine
+        const char code[] = "#define str(x) #x\n"
+                            "str(\\\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\"\\\\\"", preprocess(code, &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
 }
 
 static void hashhash1()   // #4703
@@ -4734,6 +4814,8 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(garbage_endif);
 
     TEST_CASE(hash);
+    TEST_CASE(hashEscape);
+    TEST_CASE(hashEscapeTrailingBackslash);
     TEST_CASE(hashhash1);
     TEST_CASE(hashhash2);
     TEST_CASE(hashhash3);
