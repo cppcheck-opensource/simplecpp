@@ -1490,8 +1490,12 @@ void simplecpp::TokenList::removeComments()
     while (tok) {
         Token * const tok1 = tok;
         tok = tok->next;
-        if (tok1->comment)
+        if (tok1->comment) {
+            // a comment is replaced by one space character
+            if (tok1->previous)
+                tok1->previous->whitespaceahead = true;
             deleteToken(tok1);
+        }
     }
 }
 

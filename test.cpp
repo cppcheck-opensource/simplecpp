@@ -1731,6 +1731,31 @@ static void hashEscape()
                   "\"L\\\"a\\\\\\\"b\\\"\"", preprocess(code));
 }
 
+static void hashComment()
+{
+    // a comment is replaced by one space character
+    simplecpp::DUI dui;
+    dui.removeComments = true;
+    const char code[] = "#define str(x) #x\n"
+                        "#define xstr(x) str(x)\n"
+                        "str(a/**/b)\n"
+                        "str(a/**/ /**/b)\n"
+                        "str(a/**/)\n"
+                        "xstr(a/**/b)";
+    ASSERT_EQUALS("\n\n"
+                  "\"a b\"\n"
+                  "\"a b\"\n"
+                  "\"a\"\n"
+                  "\"a b\"", preprocess(code, dui));
+
+    // comments are kept in the string when they are not removed, like gcc -C
+    ASSERT_EQUALS("\n\n"
+                  "\"a/**/b\"\n"
+                  "\"a/**/ /**/b\"\n"
+                  "\"a/**/\"\n"
+                  "\"a/**/b\"", preprocess(code));
+}
+
 static void hashEscapeTrailingBackslash()
 {
     // an odd number of trailing backslashes would escape the closing quote,
@@ -4836,6 +4861,7 @@ static void runTests(int argc, char **argv, Input input)
 
     TEST_CASE(hash);
     TEST_CASE(hashEscape);
+    TEST_CASE(hashComment);
     TEST_CASE(hashEscapeTrailingBackslash);
     TEST_CASE(hashhash1);
     TEST_CASE(hashhash2);
