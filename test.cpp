@@ -2134,7 +2134,7 @@ static void hashhash_invalid_1()
     const char code[] = "#define  f(a)  (##x)\nf(1)\n";
     simplecpp::OutputList outputList;
     ASSERT_EQUALS("", preprocess(code, &outputList));
-    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'f', Invalid ## usage when expanding 'f': Unexpected token '('\n", toString(outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'f', Invalid ## usage when expanding 'f': Combining '(' and 'x' yields an invalid token.\n", toString(outputList));
 }
 
 static void hashhash_invalid_2()
@@ -2188,6 +2188,28 @@ static void hashhash_empty_va_args()
     ASSERT_EQUALS("\n\n\n( 2 )", preprocess(code));
 }
 
+static void hashhash_punctuator() // #724
+{
+    const char code[] =
+        "#define cat(a,b) a##b\n"
+        "#define MINUS_GT -##>\n"
+        "#define VA(...) <##__VA_ARGS__\n"
+        "cat(+,=) cat(<<,=) cat(-,>) cat(&,&) cat(|,|) cat(+,+) cat(<,=) cat(.,5) MINUS_GT VA(<) VA()\n";
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("\n\n\n+= <<= -> && || ++ <= .5 -> << <", preprocess(code, &outputList));
+    ASSERT_EQUALS("", toString(outputList));
+}
+
+static void hashhash_punctuator_invalid()
+{
+    const char code[] =
+        "#define cat(a,b) a##b\n"
+        "cat(+,x)\n";
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("", preprocess(code, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'cat', Invalid ## usage when expanding 'cat': Combining '+' and 'x' yields an invalid token.\n", toString(outputList));
+}
+
 static void hashhash_va_args_unexpected()
 {
     const char code[] =
@@ -2195,7 +2217,7 @@ static void hashhash_va_args_unexpected()
         "C(1)\n";
     simplecpp::OutputList outputList;
     preprocess(code, simplecpp::DUI(), &outputList);
-    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'C', Invalid ## usage when expanding 'C': Unexpected token '!'\n", toString(outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'C', Invalid ## usage when expanding 'C': Combining '!' and '1' yields an invalid token.\n", toString(outputList));
 }
 
 static void hashhash_universal_character()
@@ -4996,6 +5018,8 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(hashhash_invalid_missing_args);
     TEST_CASE(hashhash_null_stmt);
     TEST_CASE(hashhash_empty_va_args);
+    TEST_CASE(hashhash_punctuator);
+    TEST_CASE(hashhash_punctuator_invalid);
     TEST_CASE(hashhash_va_args_unexpected);
 
     // C standard, 5.1.1.2, paragraph 4:
