@@ -3935,10 +3935,11 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                             const bool par = (tok && tok->op == '(');
                             if (par)
                                 tok = tok->next;
-                            maybeUsedMacros[rawtok->next->str()].emplace_back(rawtok->next->location);
                             if (tok) {
-                                if (macros.find(tok->str()) != macros.end())
+                                if (macros.find(tok->str()) != macros.end()) {
+                                    maybeUsedMacros[tok->str()].emplace_back(tok->location);
                                     expr.push_back(new Token("1", tok->location));
+                                }
                                 else if (hasInclude && tok->str() == HAS_INCLUDE)
                                     expr.push_back(new Token("1", tok->location));
                                 else
@@ -4004,7 +4005,9 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                             continue;
                         }
 
-                        maybeUsedMacros[rawtok->next->str()].emplace_back(rawtok->next->location);
+                        // usage of defined macros is recorded when they are expanded
+                        if (macros.find(tok->str()) == macros.end())
+                            maybeUsedMacros[tok->str()].emplace_back(tok->location);
 
                         const Token *tmp = tok;
                         if (!preprocessToken(expr, tmp, macros, files, outputList, dui)) {
