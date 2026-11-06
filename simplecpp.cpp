@@ -2191,7 +2191,14 @@ namespace simplecpp {
             if (!parametertokens1.empty())
                 parametertokens1.swap(parametertokens2);
 
-            return functionLike() ? parametertokens2.back()->next : nameTokInst->next;
+            const Token * const callEnd = functionLike() ? parametertokens2.back() : nameTokInst;
+
+            // Whitespace at the end of the replacement list does not count.
+            // The expansion is followed by the whitespace after the macro call.
+            if (output.back() && output.back() != output_end_1)
+                output.back()->whitespaceahead = callEnd->whitespaceahead;
+
+            return callEnd->next;
         }
 
         /** Returns the macro to expand when the last token of @p temp is the name of a
