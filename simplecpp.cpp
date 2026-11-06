@@ -1432,7 +1432,7 @@ void simplecpp::TokenList::constFoldLogicalOp(Token *tok)
     }
 
     // && has higher precedence than ||
-    for (const char *op : {"&&", "||"}) {
+    for (const char * const op : {"&&", "||"}) {
         for (Token *t = tok; t && t->op != ')'; t = t->next) {
             if (t->str() != op)
                 continue;
