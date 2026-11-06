@@ -70,6 +70,11 @@ static bool isOct(const std::string &s)
     return s.size()>1 && (s[0]=='0') && (s[1] >= '0') && (s[1] < '8');
 }
 
+static bool isBin(const std::string &s)
+{
+    return s.size()>2 && s.compare(0,2,"0b")==0;
+}
+
 static bool isStringLiteral(const std::string &s)
 {
     return s.size() > 1 && (s[0]=='\"') && (*s.rbegin()=='\"');
@@ -122,32 +127,57 @@ static std::string locstring(const simplecpp::Location &loc)
 }
 #endif
 
-static long long stringToLL(const std::string &s)
+static unsigned long long stringToULL(const std::string &s, std::size_t offset = 0)
 {
-    long long ret;
-    const bool hex = isHex(s);
-    const bool oct = isOct(s);
-    std::istringstream istr(hex ? s.substr(2) : oct ? s.substr(1) : s);
-    if (hex)
-        istr >> std::hex;
-    else if (oct)
-        istr >> std::oct;
-    istr >> ret;
-    return ret;
+    unsigned long long base = 10;
+    if (isHex(s.substr(offset))) {
+        offset += 2;
+        base = 16;
+    } else if (isOct(s.substr(offset))) {
+        offset += 1;
+        base = 8;
+    } else if (isBin(s.substr(offset))) {
+        offset += 2;
+        base = 2;
+    }
+
+    unsigned long long result = 0;
+    std::size_t i;
+    for (i = offset; i < s.size(); i++) {
+        const char c = s[i];
+
+        unsigned long long d;
+        if ('0' <= c && c <= '9') {
+            d = c - '0';
+        } else if ('a' <= c && c <= 'f') {
+            d = 10 + c - 'a';
+        } else if ('A' <= c && c <= 'F') {
+            d = 10 + c - 'A';
+        } else {
+            break;
+        }
+
+        if (d >= base) {
+            throw std::runtime_error("invalid integer literal");
+        }
+
+        result = base*result + d;
+    }
+
+    for (; i < s.size(); i++) {
+        if (!std::strchr("ZLUzlu", s[i])) {
+            throw std::runtime_error("invalid integer literal");
+        }
+    }
+
+    return result;
 }
 
-static unsigned long long stringToULL(const std::string &s)
+static long long stringToLL(const std::string &s)
 {
-    unsigned long long ret;
-    const bool hex = isHex(s);
-    const bool oct = isOct(s);
-    std::istringstream istr(hex ? s.substr(2) : oct ? s.substr(1) : s);
-    if (hex)
-        istr >> std::hex;
-    else if (oct)
-        istr >> std::oct;
-    istr >> ret;
-    return ret;
+    if (!s.empty() && s[0] == '-')
+        return -stringToULL(s, 1);
+    return stringToULL(s);
 }
 
 static bool endsWith(const std::string &s, const std::string &e)
