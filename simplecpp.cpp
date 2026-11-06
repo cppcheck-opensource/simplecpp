@@ -3939,11 +3939,11 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                                 if (macros.find(tok->str()) != macros.end()) {
                                     maybeUsedMacros[tok->str()].emplace_back(tok->location);
                                     expr.push_back(new Token("1", tok->location));
-                                }
-                                else if (hasInclude && tok->str() == HAS_INCLUDE)
+                                } else if (hasInclude && tok->str() == HAS_INCLUDE) {
                                     expr.push_back(new Token("1", tok->location));
-                                else
+                                } else {
                                     expr.push_back(new Token("0", tok->location));
+                                }
                             }
                             if (par)
                                 tok = tok ? tok->next : nullptr;
