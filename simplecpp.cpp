@@ -1072,6 +1072,40 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
     combineOperators();
 }
 
+/*
+ * When an operation can't be evaluated (division by zero), its result is an
+ * error value. The error is only reported if the error value is used, so an
+ * operand that is not evaluated, as in "0 && (1/0)", does not cause an error.
+ */
+static const std::string ERROR_VALUE("#error:");
+
+static bool isErrorValue(const simplecpp::Token *tok)
+{
+    return tok && tok->str().compare(0, ERROR_VALUE.size(), ERROR_VALUE) == 0;
+}
+
+static bool isValue(const simplecpp::Token *tok)
+{
+    return tok && (tok->number || isErrorValue(tok));
+}
+
+/**
+ * If one operand of the binary operator tok is an error value then
+ * "lhs op rhs" is replaced by that error value.
+ * @return the error value token, or nullptr
+ */
+static simplecpp::Token *foldErrorValue(simplecpp::TokenList &tokens, simplecpp::Token *tok)
+{
+    simplecpp::Token * const lhs = tok->previous;
+    if (!isErrorValue(lhs) && !isErrorValue(tok->next))
+        return nullptr;
+    if (!isErrorValue(lhs))
+        lhs->setstr(tok->next->str());
+    tokens.deleteToken(tok->next);
+    tokens.deleteToken(tok);
+    return lhs;
+}
+
 void simplecpp::TokenList::constFold()
 {
     while (cfront()) {
@@ -1104,6 +1138,11 @@ void simplecpp::TokenList::constFold()
         tok = tok->next;
         deleteToken(tok->previous);
         deleteToken(tok->next);
+    }
+
+    for (const Token *tok = cfront(); tok; tok = tok->next) {
+        if (isErrorValue(tok))
+            throw std::overflow_error(tok->str().substr(ERROR_VALUE.size()));
     }
 }
 
@@ -1262,17 +1301,27 @@ void simplecpp::TokenList::constFoldUnaryNotPosNeg(simplecpp::Token *tok)
         else if (isAlternativeUnaryOp(tok, COMPL))
             tok->op = '~';
 
-        if (tok->op == '!' && tok->next && tok->next->number) {
+        if (tok->isOneOf("!~") && isErrorValue(tok->next)) {
+            tok->setstr(tok->next->str());
+            deleteToken(tok->next);
+        } else if (tok->op == '!' && tok->next && tok->next->number) {
             tok->setstr(tok->next->str() == "0" ? "1" : "0");
             deleteToken(tok->next);
         } else if (tok->op == '~' && tok->next && tok->next->number) {
             tok->setstr(toString(~stringToLL(tok->next->str())));
             deleteToken(tok->next);
         } else {
-            if (tok->previous && (tok->previous->number || tok->previous->name))
+            if (tok->previous && (isValue(tok->previous) || tok->previous->name))
                 continue;
-            if (!tok->next || !tok->next->number)
+            if (!isValue(tok->next))
                 continue;
+            if (isErrorValue(tok->next)) {
+                if (tok->isOneOf("+-")) {
+                    tok->setstr(tok->next->str());
+                    deleteToken(tok->next);
+                }
+                continue;
+            }
             switch (tok->op) {
             case '+':
                 tok->setstr(tok->next->str());
@@ -1290,32 +1339,33 @@ void simplecpp::TokenList::constFoldUnaryNotPosNeg(simplecpp::Token *tok)
 void simplecpp::TokenList::constFoldMulDivRem(Token *tok)
 {
     for (; tok && tok->op != ')'; tok = tok->next) {
-        if (!tok->previous || !tok->previous->number)
+        if (!isValue(tok->previous) || !isValue(tok->next))
             continue;
-        if (!tok->next || !tok->next->number)
+        if (!tok->isOneOf("*/%"))
             continue;
-
-        long long result;
-        if (tok->op == '*') {
-            result = (stringToLL(tok->previous->str()) * stringToLL(tok->next->str()));
+        if (Token * const errorValue = foldErrorValue(*this, tok)) {
+            tok = errorValue;
+            continue;
         }
-        else if (tok->op == '/' || tok->op == '%') {
-            const long long rhs = stringToLL(tok->next->str());
-            if (rhs == 0)
-                throw std::overflow_error("division/modulo by zero");
-            const long long lhs = stringToLL(tok->previous->str());
-            if (rhs == -1 && lhs == std::numeric_limits<long long>::min())
-                throw std::overflow_error("division overflow");
-            if (tok->op == '/')
-                result = (lhs / rhs);
-            else
-                result = (lhs % rhs);
+
+        std::string result;
+        if (tok->op == '*') {
+            result = toString(stringToLL(tok->previous->str()) * stringToLL(tok->next->str()));
         } else {
-            continue;
+            const long long rhs = stringToLL(tok->next->str());
+            const long long lhs = stringToLL(tok->previous->str());
+            if (rhs == 0)
+                result = ERROR_VALUE + "division/modulo by zero";
+            else if (rhs == -1 && lhs == std::numeric_limits<long long>::min())
+                result = ERROR_VALUE + "division overflow";
+            else if (tok->op == '/')
+                result = toString(lhs / rhs);
+            else
+                result = toString(lhs % rhs);
         }
 
         tok = tok->previous;
-        tok->setstr(toString(result));
+        tok->setstr(result);
         deleteToken(tok->next);
         deleteToken(tok->next);
     }
@@ -1324,10 +1374,14 @@ void simplecpp::TokenList::constFoldMulDivRem(Token *tok)
 void simplecpp::TokenList::constFoldAddSub(Token *tok)
 {
     for (; tok && tok->op != ')'; tok = tok->next) {
-        if (!tok->previous || !tok->previous->number)
+        if (!isValue(tok->previous) || !isValue(tok->next))
             continue;
-        if (!tok->next || !tok->next->number)
+        if (!tok->isOneOf("+-"))
             continue;
+        if (Token * const errorValue = foldErrorValue(*this, tok)) {
+            tok = errorValue;
+            continue;
+        }
 
         long long result;
         if (tok->op == '+')
@@ -1347,10 +1401,14 @@ void simplecpp::TokenList::constFoldAddSub(Token *tok)
 void simplecpp::TokenList::constFoldShift(Token *tok)
 {
     for (; tok && tok->op != ')'; tok = tok->next) {
-        if (!tok->previous || !tok->previous->number)
+        if (!isValue(tok->previous) || !isValue(tok->next))
             continue;
-        if (!tok->next || !tok->next->number)
+        if (tok->str() != "<<" && tok->str() != ">>")
             continue;
+        if (Token * const errorValue = foldErrorValue(*this, tok)) {
+            tok = errorValue;
+            continue;
+        }
 
         long long result;
         if (tok->str() == "<<")
@@ -1374,12 +1432,14 @@ void simplecpp::TokenList::constFoldComparison(Token *tok)
         if (isAlternativeBinaryOp(tok,NOTEQ))
             tok->setstr("!=");
 
-        if (!tok->startsWithOneOf("<>=!"))
+        if (!tok->isOneOf("<>") && tok->str() != "<=" && tok->str() != ">=" && tok->str() != "==" && tok->str() != "!=")
             continue;
-        if (!tok->previous || !tok->previous->number)
+        if (!isValue(tok->previous) || !isValue(tok->next))
             continue;
-        if (!tok->next || !tok->next->number)
+        if (Token * const errorValue = foldErrorValue(*this, tok)) {
+            tok = errorValue;
             continue;
+        }
 
         int result;
         if (tok->str() == "==")
@@ -1419,10 +1479,12 @@ void simplecpp::TokenList::constFoldBitwise(Token *tok)
         for (tok = tok1; tok && tok->op != ')'; tok = tok->next) {
             if (tok->op != *op && !isAlternativeBinaryOp(tok, *alternativeOp))
                 continue;
-            if (!tok->previous || !tok->previous->number)
+            if (!isValue(tok->previous) || !isValue(tok->next))
                 continue;
-            if (!tok->next || !tok->next->number)
+            if (Token * const errorValue = foldErrorValue(*this, tok)) {
+                tok = errorValue;
                 continue;
+            }
             long long result;
             if (*op == '&')
                 result = (stringToLL(tok->previous->str()) & stringToLL(tok->next->str()));
@@ -1455,19 +1517,24 @@ void simplecpp::TokenList::constFoldLogicalOp(Token *tok)
         for (Token *t = tok; t && t->op != ')'; t = t->next) {
             if (t->str() != op)
                 continue;
-            if (!t->previous || !t->previous->number)
-                continue;
-            if (!t->next || !t->next->number)
+            if (!isValue(t->previous) || !isValue(t->next))
                 continue;
 
-            int result;
-            if (t->str() == "||")
-                result = (stringToLL(t->previous->str()) || stringToLL(t->next->str()));
-            else /*if (t->str() == "&&")*/
-                result = (stringToLL(t->previous->str()) && stringToLL(t->next->str()));
+            // the right operand is not evaluated if the left operand decides the result
+            std::string result;
+            if (isErrorValue(t->previous))
+                result = t->previous->str();
+            else if (t->str() == "||" && stringToLL(t->previous->str()) != 0)
+                result = "1";
+            else if (t->str() == "&&" && stringToLL(t->previous->str()) == 0)
+                result = "0";
+            else if (isErrorValue(t->next))
+                result = t->next->str();
+            else
+                result = (stringToLL(t->next->str()) != 0) ? "1" : "0";
 
             t = t->previous;
-            t->setstr(toString(result));
+            t->setstr(result);
             deleteToken(t->next);
             deleteToken(t->next);
         }
@@ -1476,30 +1543,41 @@ void simplecpp::TokenList::constFoldLogicalOp(Token *tok)
 
 void simplecpp::TokenList::constFoldQuestionOp(Token *&tok1)
 {
-    bool gotoTok1 = false;
-    // NOLINTNEXTLINE(misc-const-correctness) - technically correct but used to access non-const data
-    for (Token *tok = tok1; tok && tok->op != ')'; tok =  gotoTok1 ? tok1 : tok->next) {
-        gotoTok1 = false;
-        if (tok->str() != "?")
-            continue;
+    // ?: is right-associative, "a ? b : c ? d : e" means "a ? b : (c ? d : e)",
+    // so the last ? is folded first
+    for (;;) {
+        const Token *tok = nullptr;
+        for (const Token *t = tok1; t && t->op != ')'; t = t->next) {
+            if (t->str() == "?")
+                tok = t;
+        }
+        if (!tok)
+            return;
         if (!tok->previous || !tok->next || !tok->next->next)
             throw std::runtime_error("invalid expression");
-        if (!tok->previous->number)
-            continue;
-        if (tok->next->next->op != ':')
-            continue;
         Token * const condTok = tok->previous;
         Token * const trueTok = tok->next;
         Token * const falseTok = trueTok->next->next;
         if (!falseTok)
             throw std::runtime_error("invalid expression");
+        if (trueTok->next->op != ':')
+            return;
+        if (!isValue(condTok) || !isValue(trueTok) || !isValue(falseTok))
+            return;
+        if (isErrorValue(condTok)) {
+            // "error ? x : y" => error
+            deleteToken(condTok->next); // ?
+            deleteToken(trueTok->next); // :
+            deleteToken(trueTok);
+            deleteToken(falseTok);
+            continue;
+        }
         if (condTok == tok1)
             tok1 = (condTok->str() != "0" ? trueTok : falseTok);
         deleteToken(condTok->next); // ?
         deleteToken(trueTok->next); // :
-        deleteToken(condTok->str() == "0" ? trueTok : falseTok);
+        deleteToken(condTok->str() == "0" ? trueTok : falseTok); // the operand that is not evaluated
         deleteToken(condTok);
-        gotoTok1 = true;
     }
 }
 
