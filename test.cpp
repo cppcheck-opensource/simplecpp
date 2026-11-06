@@ -4697,6 +4697,30 @@ static void macroUsage()
         ASSERT_EQUALS(2, it->useLocation.line);
         ASSERT_EQUALS(8, it->useLocation.col);
     }
+    {
+        const char code[] = "#define X 1\n"
+                            "#if defined(X)\n"
+                            "#endif\n";
+        std::list<simplecpp::MacroUsage> macroUsage;
+        ASSERT_EQUALS("", preprocess(code, &macroUsage));
+        ASSERT_EQUALS(1, macroUsage.size());
+        auto it = macroUsage.cbegin();
+        ASSERT_EQUALS("X", it->macroName);
+        ASSERT_EQUALS(2, it->useLocation.line);
+        ASSERT_EQUALS(13, it->useLocation.col);
+    }
+    {
+        const char code[] = "#define X 1\n"
+                            "#if X\n"
+                            "#endif\n";
+        std::list<simplecpp::MacroUsage> macroUsage;
+        ASSERT_EQUALS("", preprocess(code, &macroUsage));
+        ASSERT_EQUALS(1, macroUsage.size());
+        auto it = macroUsage.cbegin();
+        ASSERT_EQUALS("X", it->macroName);
+        ASSERT_EQUALS(2, it->useLocation.line);
+        ASSERT_EQUALS(5, it->useLocation.col);
+    }
 }
 
 static void isAbsolutePath() {
