@@ -501,7 +501,7 @@ TEST_P(PREFIX_WITH_MACRO(NamingTest), n) {}
     record_property("stderr", stderr)
 
     assert exitcode == 0
-    assert stderr == "test.cpp:1: syntax error: failed to expand 'TEST_P', Invalid ## usage when expanding 'TEST_P': Unexpected token ')'\n"
+    assert stderr == "test.cpp:1: syntax error: failed to expand 'TEST_P', Invalid ## usage when expanding 'TEST_P': Combining ')' and '_' yields an invalid token.\n"
     assert stdout == '\n'
 
 def test_utf16_bom(tmpdir):
