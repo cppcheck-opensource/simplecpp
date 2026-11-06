@@ -10,7 +10,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm, ubuntu-24.04, ubuntu-24.04-arm, macos-14, macos-15, macos-15-intel, macos-26, macos-26-intel]
+        os: [ubuntu-22.04, ubuntu-22.04-arm, ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, macos-26, macos-26-intel]
         compiler: [clang++]
         include:
           - os: ubuntu-22.04
@@ -93,7 +93,7 @@ jobs:
     - name: make (c++23)
       run: |
         make clean
-        # ubuntu-22.04 and macos-14 do not support c++23 yet
+        # ubuntu-22.04 do not support c++23 yet
         make -j$(nproc) CXXOPTS="-Werror -std=c++2b"
 
     - name: Run CMake

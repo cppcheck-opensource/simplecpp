@@ -229,6 +229,9 @@ static std::string toString(const simplecpp::OutputList &outputList)
         case simplecpp::Output::Type::PORTABILITY_NO_EOF_NEWLINE:
             ostr << "portability_no_eof_newline,";
             break;
+        case simplecpp::Output::Type::PORTABILITY_STRINGIFY:
+            ostr << "portability_stringify,";
+            break;
         case simplecpp::Output::Type::UNHANDLED_CHAR_ERROR:
             ostr << "unhandled_char_error,";
             break;
@@ -1828,6 +1831,132 @@ static void hash()
                              "STR(X(Y,Y))"));
 }
 
+static void hashEscape()
+{
+    // a \ is only inserted before " and \ inside string literals and character constants
+    const char code[] = "#define str(x) #x\n"
+                        "str(\\n)\n"
+                        "str(: @\\n)\n"
+                        "str(\"\\n\")\n"
+                        "str('\\4')\n"
+                        "str('\"')\n"
+                        "str(L\"a\\\"b\")";
+    ASSERT_EQUALS("\n"
+                  "\"\\n\"\n"
+                  "\": @\\n\"\n"
+                  "\"\\\"\\\\n\\\"\"\n"
+                  "\"'\\\\4'\"\n"
+                  "\"'\\\"'\"\n"
+                  "\"L\\\"a\\\\\\\"b\\\"\"", preprocess(code));
+}
+
+static void hashComment()
+{
+    // a comment is replaced by one space character
+    simplecpp::DUI dui;
+    dui.removeComments = true;
+    const char code[] = "#define str(x) #x\n"
+                        "#define xstr(x) str(x)\n"
+                        "str(a/**/b)\n"
+                        "str(a/**/ /**/b)\n"
+                        "str(a/**/)\n"
+                        "xstr(a/**/b)";
+    ASSERT_EQUALS("\n\n"
+                  "\"a b\"\n"
+                  "\"a b\"\n"
+                  "\"a\"\n"
+                  "\"a b\"", preprocess(code, dui));
+
+    // comments are kept in the string when they are not removed, like gcc -C
+    ASSERT_EQUALS("\n\n"
+                  "\"a/**/b\"\n"
+                  "\"a/**/ /**/b\"\n"
+                  "\"a/**/\"\n"
+                  "\"a/**/b\"", preprocess(code));
+}
+
+static void hashMacroTrailingWhitespace()
+{
+    // whitespace at the end of a replacement list does not count
+    simplecpp::DUI dui;
+    dui.removeComments = true;
+    const char code[] = "#define str(x) #x\n"
+                        "#define xstr(x) str(x)\n"
+                        "#define MAJOR 1/*major*/\n"
+                        "#define MINOR 2 \n"
+                        "#define F(x) x\n"
+                        "#define G F(a)\n"
+                        "xstr(MAJOR.MINOR)\n"
+                        "xstr(F(a)b)\n"
+                        "xstr(F(a) b)\n"
+                        "xstr(G.b)\n"
+                        "xstr(G b)";
+    ASSERT_EQUALS("\n\n\n\n\n\n"
+                  "\"1.2\"\n"
+                  "\"ab\"\n"
+                  "\"a b\"\n"
+                  "\"a.b\"\n"
+                  "\"a b\"", preprocess(code, dui));
+}
+
+static void hashEscapeTrailingBackslash()
+{
+    // an odd number of trailing backslashes would escape the closing quote,
+    // the final backslash is dropped (like gcc and clang) and a warning is reported
+    const char msg[] = "Invalid string literal when expanding 'str', ignoring final '\\'. "
+                       "Undefined behavior according to C standard chapter 6.10.3.2, paragraph 2.\n";
+    {
+        const char code[] = "int x;\n"
+                            "#define str(x) #x\n"
+                            "str(\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("int x ;\n\n\"\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,3,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        const char code[] = "#define str(x) #x\n"
+                            "str(a\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\"a\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // three backslashes
+        const char code[] = "#define str(x) #x\n"
+                            "str(\\\\\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\"\\\\\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // # in a nested macro
+        const char code[] = "#define str(x) #x\n"
+                            "#define T(x) str(x)\n"
+                            "T(\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\n\"\"", preprocess(code, &outputList));
+        ASSERT_EQUALS(std::string("file0,3,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // in a #if expression
+        const char code[] = "#define str(x) #x\n"
+                            "#if 1 || str(\\)\n"
+                            "A\n"
+                            "#endif\n";
+        simplecpp::OutputList outputList;
+        preprocess(code, &outputList);
+        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg, toString(outputList));
+    }
+    {
+        // even number of backslashes is fine
+        const char code[] = "#define str(x) #x\n"
+                            "str(\\\\)\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\"\\\\\"", preprocess(code, &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
+}
+
 static void hashhash1()   // #4703
 {
     const char code[] = "#define MACRO( A, B, C ) class A##B##C##Creator {};\n"
@@ -2571,6 +2700,27 @@ static void ifLogical()
     ASSERT_EQUALS("\nX", preprocess(code, dui));
 }
 
+static void ifLogicalPrecedence()
+{
+    // && has higher precedence than ||
+    const char code1[] = "#if 1 || 1 && 0\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("\nX", preprocess(code1));
+    const char code2[] = "#if 1 or 1 and 0\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("\nX", preprocess(code2));
+    const char code3[] = "#if 0 && 1 || 1\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("\nX", preprocess(code3));
+    const char code4[] = "#if 0 || 1 && 0\n"
+                         "X\n"
+                         "#endif";
+    ASSERT_EQUALS("", preprocess(code4));
+}
+
 static void ifSizeof()
 {
     const char code[] = "#if sizeof(unsigned short)==2\n"
@@ -2609,6 +2759,16 @@ static void elif()
                          "3\n"
                          "#endif";
     ASSERT_EQUALS("\n\n\n\n\n3", preprocess(code3));
+
+    // #elif after a taken group must not be evaluated
+    const char code4[] = "#if 1\n"
+                         "1\n"
+                         "#elif 1/0\n"
+                         "2\n"
+                         "#elif garbage(\n"
+                         "3\n"
+                         "#endif";
+    ASSERT_EQUALS("\n1", preprocess(code4));
 }
 
 static void elifdef()
@@ -2716,6 +2876,24 @@ static void ifdiv0()
                         "#endif\n"
                         "123";
     ASSERT_EQUALS("", preprocess(code));
+}
+
+static void ifTrueFalse()
+{
+    const char code[] = "#if true && !false\n"
+                        "1\n"
+                        "#else\n"
+                        "2\n"
+                        "#endif\n";
+    simplecpp::DUI dui;
+    ASSERT_EQUALS("\n1", preprocess(code, dui, nullptr));
+    dui.std = "c++11";
+    ASSERT_EQUALS("\n1", preprocess(code, dui, nullptr));
+    dui.std = "c23";
+    ASSERT_EQUALS("\n1", preprocess(code, dui, nullptr));
+    // before C23, true and false are ordinary identifiers that evaluate to 0
+    dui.std = "c17";
+    ASSERT_EQUALS("\n\n\n2", preprocess(code, dui, nullptr));
 }
 
 static void ifalt()   // using "and", "or", etc
@@ -4638,6 +4816,30 @@ static void macroUsage()
         ASSERT_EQUALS(2, it->useLocation.line);
         ASSERT_EQUALS(8, it->useLocation.col);
     }
+    {
+        const char code[] = "#define X 1\n"
+                            "#if defined(X)\n"
+                            "#endif\n";
+        std::list<simplecpp::MacroUsage> macroUsage;
+        ASSERT_EQUALS("", preprocess(code, &macroUsage));
+        ASSERT_EQUALS(1, macroUsage.size());
+        auto it = macroUsage.cbegin();
+        ASSERT_EQUALS("X", it->macroName);
+        ASSERT_EQUALS(2, it->useLocation.line);
+        ASSERT_EQUALS(13, it->useLocation.col);
+    }
+    {
+        const char code[] = "#define X 1\n"
+                            "#if X\n"
+                            "#endif\n";
+        std::list<simplecpp::MacroUsage> macroUsage;
+        ASSERT_EQUALS("", preprocess(code, &macroUsage));
+        ASSERT_EQUALS(1, macroUsage.size());
+        auto it = macroUsage.cbegin();
+        ASSERT_EQUALS("X", it->macroName);
+        ASSERT_EQUALS(2, it->useLocation.line);
+        ASSERT_EQUALS(5, it->useLocation.col);
+    }
 }
 
 static void isAbsolutePath() {
@@ -4826,6 +5028,10 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(garbage_endif);
 
     TEST_CASE(hash);
+    TEST_CASE(hashEscape);
+    TEST_CASE(hashComment);
+    TEST_CASE(hashMacroTrailingWhitespace);
+    TEST_CASE(hashEscapeTrailingBackslash);
     TEST_CASE(hashhash1);
     TEST_CASE(hashhash2);
     TEST_CASE(hashhash3);
@@ -4897,6 +5103,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifDefinedHashHash);
     TEST_CASE(ifDefinedHashHash2);
     TEST_CASE(ifLogical);
+    TEST_CASE(ifLogicalPrecedence);
     TEST_CASE(ifSizeof);
     TEST_CASE(elif);
     TEST_CASE(elifdef);
@@ -4904,6 +5111,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifif);
     TEST_CASE(ifoverflow);
     TEST_CASE(ifdiv0);
+    TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
     TEST_CASE(ifexpr);
     TEST_CASE(ifUndefFuncStyleMacro);
