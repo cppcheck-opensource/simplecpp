@@ -222,7 +222,7 @@ static bool isAlternativeUnaryOp(const simplecpp::Token *tok, const std::string 
         return false;
     // it is followed by the start of an operand
     const simplecpp::Token *next = tok->next;
-    return next && (next->name || next->number || next->isOneOf("(!~+-"));
+    return next && (next->name || isValue(next) || next->isOneOf("(!~+-"));
 }
 
 static std::string replaceAll(std::string s, const std::string& from, const std::string& to)

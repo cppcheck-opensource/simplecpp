@@ -2869,7 +2869,10 @@ static void ifShortCircuit()
         "defined(X) and X/0",
         "0 && 1 bitor (1/0)",
         "!(1 || (1/0) bitand 1)",
-        "0 and 1 xor (1/0)"
+        "0 and 1 xor (1/0)",
+        "0 && not (1/0)",
+        "0 && compl (1/0)",
+        "!(1 || not not (1/0))"
     };
     for (const char * const expr : exprs) {
         const std::string code = std::string("#if ") + expr + "\n"
@@ -2885,6 +2888,9 @@ static void ifShortCircuit()
     // evaluated operands are still checked
     simplecpp::OutputList outputList;
     ASSERT_EQUALS("", preprocess("#if 1 && (1/0)\n#endif\n", &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
+    outputList.clear();
+    ASSERT_EQUALS("", preprocess("#if not (1/0)\n#endif\n", &outputList));
     ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
 }
 
