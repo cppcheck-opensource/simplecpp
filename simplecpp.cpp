@@ -295,68 +295,61 @@ class simplecpp::TokenList::Stream {
 public:
     virtual ~Stream() = default;
 
-    virtual int get() = 0;
-    virtual int peek() = 0;
-    virtual void unget() = 0;
-    virtual bool good() = 0;
-
+    /**
+     * Read the next character. CR and CR LF are returned as LF.
+     * At the end of the input, EOF converted to unsigned char is returned
+     * and good() becomes false.
+     */
     unsigned char readChar() {
-        auto ch = static_cast<unsigned char>(get());
-
-        // For UTF-16 encoded files the BOM is 0xfeff/0xfffe. If the
-        // character is non-ASCII character then replace it with 0xff
-        if (isUtf16) {
-            const auto ch2 = static_cast<unsigned char>(get());
-            const int ch16 = makeUtf16Char(ch, ch2);
-            ch = static_cast<unsigned char>(((ch16 >= 0x80) ? 0xff : ch16));
+        int ch = getUnit();
+        if (ch == EOF) {
+            atEnd = true;
+            lastChar = EOF;
+            return static_cast<unsigned char>(EOF);
         }
 
         // Handling of newlines..
         if (ch == '\r') {
             ch = '\n';
-
-            int ch2 = get();
-            if (isUtf16) {
-                const int c2 = get();
-                ch2 = makeUtf16Char(ch2, c2);
-            }
-
-            if (ch2 != '\n')
-                ungetChar();
+            const int ch2 = getUnit();
+            if (ch2 != '\n' && ch2 != EOF)
+                buffer.push_back(static_cast<char>(ch2));
         }
 
-        return ch;
+        lastChar = ch;
+        return static_cast<unsigned char>(ch);
     }
 
+    /** The next character, without reading it. EOF at the end of the input. */
     int peekChar() {
-        int ch = peek();
+        const int ch = getUnit();
         if (ch == EOF)
-            return ch;
-
-        // For UTF-16 encoded files the BOM is 0xfeff/0xfffe. If the
-        // character is non-ASCII character then replace it with 0xff
-        if (isUtf16) {
-            (void)get();
-            const auto ch2 = static_cast<unsigned char>(peek());
-            unget();
-            const int ch16 = makeUtf16Char(ch, ch2);
-            ch = (ch16 >= 0x80) ? 0xff : ch16;
-        }
-
-        // Handling of newlines..
-        if (ch == '\r')
-            ch = '\n';
-
-        return ch;
+            return EOF;
+        buffer.push_back(static_cast<char>(ch));
+        return (ch == '\r') ? '\n' : ch;
     }
 
+    /** Put back the character that was last read with readChar() */
     void ungetChar() {
-        unget();
-        if (isUtf16)
-            unget();
+        if (lastChar != EOF)
+            buffer.push_back(static_cast<char>(lastChar));
+        lastChar = EOF;
+    }
+
+    /**
+     * false when readChar() has reached the end of the input.
+     * Unlike std::istream::good(), peekChar() at the end of the input does not make it false.
+     */
+    bool good() const {
+        return !atEnd;
     }
 
 protected:
+    /** Raw input, used only by the Stream class. Call readChar(), peekChar() and ungetChar() instead. */
+    virtual int get() = 0;
+    virtual int peek() = 0;
+    virtual void unget() = 0;
+
     void init() {
         // initialize since we use peek() in getAndSkipBOM()
         isUtf16 = false;
@@ -365,6 +358,38 @@ protected:
     }
 
 private:
+    /**
+     * Read the next character from the input, or take it from the buffer.
+     * Newlines are not converted.
+     */
+    int getUnit() {
+        if (!buffer.empty()) {
+            const auto ch = static_cast<unsigned char>(buffer.back());
+            buffer.pop_back();
+            return ch;
+        }
+        if (inputEnd)
+            return EOF;
+        const int ch = get();
+        if (ch == EOF) {
+            inputEnd = true;
+            return EOF;
+        }
+        if (!isUtf16)
+            return ch;
+
+        // For UTF-16 encoded files the BOM is 0xfeff/0xfffe. If the
+        // character is non-ASCII character then replace it with 0xff
+        const int ch2 = get();
+        if (ch2 == EOF) {
+            // a dangling last byte is dropped
+            inputEnd = true;
+            return EOF;
+        }
+        const int ch16 = makeUtf16Char(static_cast<unsigned char>(ch), static_cast<unsigned char>(ch2));
+        return (ch16 >= 0x80) ? 0xff : ch16;
+    }
+
     inline int makeUtf16Char(const unsigned char ch, const unsigned char ch2) const {
         return (bom == 0xfeff) ? (ch<<8 | ch2) : (ch2<<8 | ch);
     }
@@ -400,6 +425,15 @@ private:
     }
 
     unsigned short bom;
+
+    /** characters that are read but not used yet. The next character is at the back. */
+    std::string buffer;
+    /** the last character returned by readChar(), EOF if ungetChar() has nothing to put back */
+    int lastChar{EOF};
+    /** readChar() has returned EOF */
+    bool atEnd{false};
+    /** get() has returned EOF */
+    bool inputEnd{false};
 protected:
     bool isUtf16;
 };
@@ -414,6 +448,7 @@ namespace {
             init();
         }
 
+    protected:
         int get() override {
             return istr.get();
         }
@@ -422,9 +457,6 @@ namespace {
         }
         void unget() override {
             istr.unget();
-        }
-        bool good() override {
-            return istr.good();
         }
 
     private:
@@ -441,28 +473,25 @@ namespace {
             init();
         }
 
+    protected:
         int get() override {
             if (pos >= size)
-                return lastStatus = EOF;
+                return EOF;
             return str[pos++];
         }
         int peek() override {
             if (pos >= size)
-                return lastStatus = EOF;
+                return EOF;
             return str[pos];
         }
         void unget() override {
             --pos;
-        }
-        bool good() override {
-            return lastStatus != EOF;
         }
 
     private:
         const unsigned char *str;
         const std::size_t size;
         std::size_t pos{};
-        int lastStatus{};
     };
 
     class FileStream : public simplecpp::TokenList::Stream {
@@ -489,8 +518,9 @@ namespace {
             file = nullptr;
         }
 
+    protected:
         int get() override {
-            lastStatus = lastCh = fgetc(file);
+            lastCh = fgetc(file);
             return lastCh;
         }
         int peek() override {
@@ -501,9 +531,6 @@ namespace {
         }
         void unget() override {
             unget_internal(lastCh);
-        }
-        bool good() override {
-            return lastStatus != EOF;
         }
 
     private:
@@ -519,7 +546,6 @@ namespace {
 
         FILE *file;
         int lastCh{};
-        int lastStatus{};
     };
 }
 
