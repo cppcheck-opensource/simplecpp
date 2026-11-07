@@ -429,6 +429,9 @@ namespace simplecpp {
         const Token* lastLineTok(int maxsize=1000) const;
         const Token* isLastLinePreprocessor(int maxsize=1000) const;
 
+        TokenString readBlockComment(Stream &stream, unsigned int &multiline);
+        void readErrorText(Stream &stream, unsigned char ch, Location &location);
+
         unsigned int fileIndex(const std::string &filename);
 
         Token *frontToken;

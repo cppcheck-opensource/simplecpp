@@ -726,6 +726,112 @@ void simplecpp::TokenList::lineDirective(unsigned int fileIndex_, unsigned int l
 
 static const std::string COMMENT_END("*/");
 
+static simplecpp::TokenString readNameOrNumber(simplecpp::TokenList::Stream &stream, unsigned char ch)
+{
+    simplecpp::TokenString currentToken;
+    const bool num = !!std::isdigit(ch);
+    while (stream.good() && isNameChar(ch)) {
+        currentToken += ch;
+        ch = stream.readChar();
+        if (num && ch=='\'' && isNameChar(stream.peekChar()))
+            ch = stream.readChar();
+    }
+    stream.ungetChar();
+    return currentToken;
+}
+
+static simplecpp::TokenString readLineComment(simplecpp::TokenList::Stream &stream, unsigned char ch, const simplecpp::Location &location, unsigned int &multiline, simplecpp::OutputList *outputList)
+{
+    simplecpp::TokenString currentToken;
+    while (stream.good() && ch != '\n') {
+        currentToken += ch;
+        ch = stream.readChar();
+        if (ch == '\\') {
+            simplecpp::TokenString tmp;
+            char tmp_ch = ch;
+            while ((stream.good()) && (tmp_ch == '\\' || tmp_ch == ' ' || tmp_ch == '\t')) {
+                tmp += tmp_ch;
+                tmp_ch = stream.readChar();
+            }
+            if (!stream.good()) {
+                break;
+            }
+
+            if (tmp_ch != '\n') {
+                currentToken += tmp;
+            } else {
+                const simplecpp::TokenString check_portability = currentToken + tmp;
+                const std::string::size_type pos = check_portability.find_last_not_of(" \t");
+                if (pos < check_portability.size() - 1U && check_portability[pos] == '\\')
+                    portabilityBackslash(outputList, location);
+                ++multiline;
+                tmp_ch = stream.readChar();
+                currentToken += '\n';
+            }
+            ch = tmp_ch;
+        }
+    }
+    if (ch == '\n') {
+        stream.ungetChar();
+    }
+    return currentToken;
+}
+
+simplecpp::TokenString simplecpp::TokenList::readBlockComment(Stream &stream, unsigned int &multiline)
+{
+    TokenString currentToken = "/*";
+    (void)stream.readChar();
+    unsigned char ch = stream.readChar();
+    while (stream.good()) {
+        currentToken += ch;
+        if (currentToken.size() >= 4U && endsWith(currentToken, COMMENT_END))
+            break;
+        ch = stream.readChar();
+    }
+    // multiline..
+
+    std::string::size_type pos = 0;
+    while ((pos = currentToken.find("\\\n",pos)) != std::string::npos) {
+        currentToken.erase(pos,2);
+        ++multiline;
+    }
+    if (multiline || isLastLinePreprocessor()) {
+        pos = 0;
+        while ((pos = currentToken.find('\n',pos)) != std::string::npos) {
+            currentToken.erase(pos,1);
+            ++multiline;
+        }
+    }
+    return currentToken;
+}
+
+void simplecpp::TokenList::readErrorText(Stream &stream, unsigned char ch, Location &location)
+{
+    TokenString currentToken;
+    char prev = ' ';
+    while (stream.good() && (prev == '\\' || (ch != '\r' && ch != '\n'))) {
+        currentToken += ch;
+        prev = ch;
+        ch = stream.readChar();
+    }
+    stream.ungetChar();
+    std::string::size_type pos = 0;
+    unsigned int spliced = 0;
+    while ((pos = currentToken.find('\\', pos)) != std::string::npos) {
+        if (pos + 1 < currentToken.size() && currentToken[pos + 1] == '\n') {
+            currentToken.erase(pos, 2);
+            ++spliced;
+        } else {
+            ++pos;
+        }
+    }
+    if (!currentToken.empty()) {
+        push_back(new Token(currentToken, location));
+        location.adjust(currentToken);
+    }
+    location.line += spliced;
+}
+
 void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename, const DUI &dui, OutputList *outputList)
 {
     unsigned int multiline = 0U;
@@ -880,105 +986,24 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
         if (cback() && cback()->location.line == location.line && cback()->previous && cback()->previous->op == '#') {
             const Token* const ppTok = cback()->previous;
             if (ppTok->next && (ppTok->next->str() == "error" || ppTok->next->str() == "warning")) {
-                char prev = ' ';
-                while (stream.good() && (prev == '\\' || (ch != '\r' && ch != '\n'))) {
-                    currentToken += ch;
-                    prev = ch;
-                    ch = stream.readChar();
-                }
-                stream.ungetChar();
-                std::string::size_type pos = 0;
-                unsigned int spliced = 0;
-                while ((pos = currentToken.find('\\', pos)) != std::string::npos) {
-                    if (pos + 1 < currentToken.size() && currentToken[pos + 1] == '\n') {
-                        currentToken.erase(pos, 2);
-                        ++spliced;
-                    } else {
-                        ++pos;
-                    }
-                }
-                if (!currentToken.empty()) {
-                    push_back(new Token(currentToken, location));
-                    location.adjust(currentToken);
-                }
-                location.line += spliced;
+                readErrorText(stream, ch, location);
                 continue;
             }
         }
 
         // number or name
         if (isNameChar(ch)) {
-            const bool num = !!std::isdigit(ch);
-            while (stream.good() && isNameChar(ch)) {
-                currentToken += ch;
-                ch = stream.readChar();
-                if (num && ch=='\'' && isNameChar(stream.peekChar()))
-                    ch = stream.readChar();
-            }
-
-            stream.ungetChar();
+            currentToken = readNameOrNumber(stream, ch);
         }
 
         // comment
         else if (ch == '/' && stream.peekChar() == '/') {
-            while (stream.good() && ch != '\n') {
-                currentToken += ch;
-                ch = stream.readChar();
-                if (ch == '\\') {
-                    TokenString tmp;
-                    char tmp_ch = ch;
-                    while ((stream.good()) && (tmp_ch == '\\' || tmp_ch == ' ' || tmp_ch == '\t')) {
-                        tmp += tmp_ch;
-                        tmp_ch = stream.readChar();
-                    }
-                    if (!stream.good()) {
-                        break;
-                    }
-
-                    if (tmp_ch != '\n') {
-                        currentToken += tmp;
-                    } else {
-                        const TokenString check_portability = currentToken + tmp;
-                        const std::string::size_type pos = check_portability.find_last_not_of(" \t");
-                        if (pos < check_portability.size() - 1U && check_portability[pos] == '\\')
-                            portabilityBackslash(outputList, location);
-                        ++multiline;
-                        tmp_ch = stream.readChar();
-                        currentToken += '\n';
-                    }
-                    ch = tmp_ch;
-                }
-            }
-            if (ch == '\n') {
-                stream.ungetChar();
-            }
+            currentToken = readLineComment(stream, ch, location, multiline, outputList);
         }
 
         // comment
         else if (ch == '/' && stream.peekChar() == '*') {
-            currentToken = "/*";
-            (void)stream.readChar();
-            ch = stream.readChar();
-            while (stream.good()) {
-                currentToken += ch;
-                if (currentToken.size() >= 4U && endsWith(currentToken, COMMENT_END))
-                    break;
-                ch = stream.readChar();
-            }
-            // multiline..
-
-            std::string::size_type pos = 0;
-            while ((pos = currentToken.find("\\\n",pos)) != std::string::npos) {
-                currentToken.erase(pos,2);
-                ++multiline;
-            }
-            if (multiline || isLastLinePreprocessor()) {
-                pos = 0;
-                while ((pos = currentToken.find('\n',pos)) != std::string::npos) {
-                    currentToken.erase(pos,1);
-                    ++multiline;
-                }
-            }
+            currentToken = readBlockComment(stream, multiline);
         }
 
         // string / char literal
