@@ -726,6 +726,14 @@ void simplecpp::TokenList::lineDirective(unsigned int fileIndex_, unsigned int l
 
 static const std::string COMMENT_END("*/");
 
+/**
+ * Read a name or a number.
+ * In a number, a ' digit separator is removed, so 1'000 gives "1000".
+ * The stream is left after the last character of the token.
+ * @param stream the stream to read from
+ * @param ch     the first character, already read from the stream
+ * @return the name or number
+ */
 static simplecpp::TokenString readNameOrNumber(simplecpp::TokenList::Stream &stream, unsigned char ch)
 {
     simplecpp::TokenString currentToken;
@@ -740,6 +748,19 @@ static simplecpp::TokenString readNameOrNumber(simplecpp::TokenList::Stream &str
     return currentToken;
 }
 
+/**
+ * Read a // comment, up to but not including the newline.
+ * A backslash followed by a newline continues the comment on the next line.
+ * The backslash, and any spaces or tabs after it, are then replaced by a
+ * newline in the comment text.
+ * @param stream     the stream to read from
+ * @param ch         the first '/', already read from the stream
+ * @param location   the location of the comment, used for warnings
+ * @param multiline  incremented for each continued line
+ * @param outputList if not null, a portability warning is added when there is
+ *                   whitespace between the backslash and the newline
+ * @return the comment text, including the leading //
+ */
 static simplecpp::TokenString readLineComment(simplecpp::TokenList::Stream &stream, unsigned char ch, const simplecpp::Location &location, unsigned int &multiline, simplecpp::OutputList *outputList)
 {
     simplecpp::TokenString currentToken;
