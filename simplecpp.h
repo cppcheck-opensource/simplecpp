@@ -429,6 +429,27 @@ namespace simplecpp {
         const Token* lastLineTok(int maxsize=1000) const;
         const Token* isLastLinePreprocessor(int maxsize=1000) const;
 
+        /**
+         * Read a block comment, up to and including the closing star-slash.
+         * Each backslash-newline is removed from the text. If the comment is
+         * on a continued line or in a preprocessor directive, its newlines are
+         * removed too, so that the directive keeps going after the comment.
+         * @param stream    the stream to read from. The first '/' is already
+         *                  read, and the next character is '*'.
+         * @param multiline incremented for each newline that is removed
+         * @return the comment text
+         */
+        TokenString readBlockComment(Stream &stream, unsigned int &multiline);
+        /**
+         * Read the text of a #error or #warning directive, up to but not
+         * including the newline, and add it as one token. A backslash-newline
+         * continues the text on the next line and is removed from it.
+         * @param stream   the stream to read from
+         * @param ch       the first character of the text, already read from the stream
+         * @param location the location of the text. Updated to point after it.
+         */
+        void readErrorText(Stream &stream, unsigned char ch, Location &location);
+
         unsigned int fileIndex(const std::string &filename);
 
         Token *frontToken;
