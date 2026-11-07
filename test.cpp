@@ -3086,6 +3086,19 @@ static void location12()
 }
 
 
+static void location13()
+{
+    simplecpp::DUI dui;
+    dui.ignoreLineDirectives = true;
+
+    const char code[] =
+        "#line 3 \"file.c\"\n"
+        "__LINE__ __FILE__\n";
+    ASSERT_EQUALS("\n"
+                  "2 \"\"",
+                  preprocess(code, dui));
+}
+
 static void missingHeader1()
 {
     const char code[] = "#include \"notexist.h\"\n";
@@ -5140,6 +5153,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(location10);
     TEST_CASE(location11);
     TEST_CASE(location12);
+    TEST_CASE(location13);
 
     TEST_CASE(missingHeader1);
     TEST_CASE(missingHeader2);
