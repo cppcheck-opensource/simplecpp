@@ -1545,14 +1545,14 @@ void simplecpp::TokenList::constFoldQuestionOp(Token *&tok1)
 {
     // ?: is right-associative, "a ? b : c ? d : e" means "a ? b : (c ? d : e)",
     // so the last ? is folded first
-    for (;;) {
-        const Token *tok = nullptr;
-        for (const Token *t = tok1; t && t->op != ')'; t = t->next) {
-            if (t->str() == "?")
-                tok = t;
-        }
-        if (!tok)
-            return;
+    std::vector<const Token *> questionTokens;
+    for (const Token *t = tok1; t && t->op != ')'; t = t->next) {
+        if (t->str() == "?")
+            questionTokens.push_back(t);
+    }
+    while (!questionTokens.empty()) {
+        const Token * const tok = questionTokens.back();
+        questionTokens.pop_back();
         if (!tok->previous || !tok->next || !tok->next->next)
             throw std::runtime_error("invalid expression");
         Token * const condTok = tok->previous;
@@ -1570,14 +1570,15 @@ void simplecpp::TokenList::constFoldQuestionOp(Token *&tok1)
             deleteToken(trueTok->next); // :
             deleteToken(trueTok);
             deleteToken(falseTok);
-            continue;
+        } else {
+            Token * const result = (condTok->str() != "0" ? trueTok : falseTok);
+            if (condTok == tok1)
+                tok1 = result;
+            deleteToken(condTok->next); // ?
+            deleteToken(trueTok->next); // :
+            deleteToken(result == falseTok ? trueTok : falseTok); // the operand that is not evaluated
+            deleteToken(condTok);
         }
-        if (condTok == tok1)
-            tok1 = (condTok->str() != "0" ? trueTok : falseTok);
-        deleteToken(condTok->next); // ?
-        deleteToken(trueTok->next); // :
-        deleteToken(condTok->str() == "0" ? trueTok : falseTok); // the operand that is not evaluated
-        deleteToken(condTok);
     }
 }
 
