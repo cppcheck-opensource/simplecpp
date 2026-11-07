@@ -2869,7 +2869,10 @@ static void ifShortCircuit()
         "defined(X) and X/0",
         "0 && 1 bitor (1/0)",
         "!(1 || (1/0) bitand 1)",
-        "0 and 1 xor (1/0)"
+        "0 and 1 xor (1/0)",
+        "0 && not (1/0)",
+        "0 && compl (1/0)",
+        "!(1 || not not (1/0))"
     };
     for (const char * const expr : exprs) {
         const std::string code = std::string("#if ") + expr + "\n"
@@ -2885,6 +2888,9 @@ static void ifShortCircuit()
     // evaluated operands are still checked
     simplecpp::OutputList outputList;
     ASSERT_EQUALS("", preprocess("#if 1 && (1/0)\n#endif\n", &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
+    outputList.clear();
+    ASSERT_EQUALS("", preprocess("#if not (1/0)\n#endif\n", &outputList));
     ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
 }
 
@@ -3020,6 +3026,45 @@ static void ifalt()   // using "and", "or", etc
            "2\n"
            "#endif\n";
     ASSERT_EQUALS("\n1", preprocess(code));
+}
+
+static void ifAltUnaryOperators()   // "not" and "compl" anywhere a unary operator is allowed
+{
+    const char * const exprs[] = {
+        // at the start of the expression
+        "not 0",
+        "(not 0)",
+        "not 0 && 1",
+        "compl 0",
+        // after a binary operator, "?" or ":"
+        "1 && not 0",
+        "1 and not 0",
+        "0 || not 0",
+        "1 == not 0",
+        "0 ? 0 : not 0",
+        "1 ? not 0 : 0",
+        // next to another unary operator
+        "not not 1",
+        "not -0",
+        "not ~-1",
+        "not !0 == 0",
+        "compl compl 1 == 1",
+        "compl -1 == 0",
+        "!(compl -1 + 1 == 0)",
+        "-compl 0 == 1",
+        // followed by "("
+        "not (0)",
+        "not(0)",
+        "compl (0) == -1"
+    };
+    for (const char * const expr : exprs) {
+        const std::string code = std::string("#if ") + expr + "\n"
+                                 "1\n"
+                                 "#else\n"
+                                 "2\n"
+                                 "#endif\n";
+        ASSERT_EQUALS("\n1", preprocess(code.c_str()));
+    }
 }
 
 static void ifexpr()
@@ -5226,6 +5271,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifInvalidExpression);
     TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
+    TEST_CASE(ifAltUnaryOperators);
     TEST_CASE(ifexpr);
     TEST_CASE(ifUndefFuncStyleMacro);
 
