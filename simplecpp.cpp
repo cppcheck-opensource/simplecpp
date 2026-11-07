@@ -217,11 +217,11 @@ static bool isAlternativeUnaryOp(const simplecpp::Token *tok, const std::string 
     if (!tok->name || tok->str() != alt)
         return false;
     // a unary operator comes first or after another operator, but not after an operand
-    const simplecpp::Token *prev = tok->previous;
+    const simplecpp::Token * const prev = tok->previous;
     if (prev && (isValue(prev) || prev->op == ')' || (prev->name && !isAlternativeOpName(prev))))
         return false;
     // it is followed by the start of an operand
-    const simplecpp::Token *next = tok->next;
+    const simplecpp::Token * const next = tok->next;
     return next && (next->name || isValue(next) || next->isOneOf("(!~+-"));
 }
 
