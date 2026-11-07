@@ -1291,9 +1291,16 @@ void simplecpp::TokenList::combineOperators()
 
 static const std::string COMPL("compl");
 static const std::string NOT("not");
-void simplecpp::TokenList::constFoldUnaryNotPosNeg(simplecpp::Token *tok)
+void simplecpp::TokenList::constFoldUnaryNotPosNeg(simplecpp::Token *tok1)
 {
-    for (; tok && tok->op != ')'; tok = tok->next) {
+    if (!tok1 || tok1->op == ')')
+        return;
+    Token *last = tok1;
+    while (last->next && last->next->op != ')')
+        last = last->next;
+
+    // unary operators are right-associative, "!-0" means "!(-0)", so they are folded from right to left
+    for (Token *tok = last; tok; tok = (tok == tok1) ? nullptr : tok->previous) {
         // "not" might be !
         if (isAlternativeUnaryOp(tok, NOT))
             tok->op = '!';
@@ -1328,7 +1335,10 @@ void simplecpp::TokenList::constFoldUnaryNotPosNeg(simplecpp::Token *tok)
                 deleteToken(tok->next);
                 break;
             case '-':
-                tok->setstr(tok->op + tok->next->str());
+                if (tok->next->str()[0] == '-')
+                    tok->setstr(tok->next->str().substr(1));
+                else
+                    tok->setstr(tok->op + tok->next->str());
                 deleteToken(tok->next);
                 break;
             }
