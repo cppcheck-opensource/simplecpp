@@ -378,8 +378,11 @@ private:
         // For UTF-16 encoded files the BOM is 0xfeff/0xfffe. If the
         // character is non-ASCII character then replace it with 0xff
         const int ch2 = get();
-        if (ch2 == EOF)
+        if (ch2 == EOF) {
+            // a dangling last byte is dropped
             inputEnd = true;
+            return EOF;
+        }
         const int ch16 = makeUtf16Char(static_cast<unsigned char>(ch), static_cast<unsigned char>(ch2));
         return (ch16 >= 0x80) ? 0xff : ch16;
     }

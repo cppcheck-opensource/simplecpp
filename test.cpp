@@ -3981,6 +3981,11 @@ static void readfile_char_error()
 
     readfile("A = 's\n'", {}, &outputList);
     ASSERT_EQUALS("file0,1,syntax_error,No pair for character (\'). Can't process file. File is either invalid or unicode, which is currently not supported.\n", toString(outputList));
+    outputList.clear();
+
+    // the ' at the end of the file is not dropped after the peek for a digit separator
+    readfile("A = 1'", {}, &outputList);
+    ASSERT_EQUALS("file0,1,syntax_error,No pair for character (\'). Can't process file. File is either invalid or unicode, which is currently not supported.\n", toString(outputList));
 }
 
 static void readfile_string()
@@ -4385,6 +4390,18 @@ static void unicode()
     {
         const char code[] = "\xff\xfe\x0d\x00\x0a\x00\x2f\x00\x2f\x00\x31\x00\x0d\x00\x0a\x00";
         ASSERT_EQUALS("\n//1", readfile(code, sizeof(code)-1));
+    }
+    {
+        // CR newlines
+        const char code[] = "\xff\xfe\x78\x00\x0d\x00\x79\x00\x0d\x00";
+        ASSERT_EQUALS("x\ny", readfile(code, sizeof(code)-1));
+    }
+    {
+        // odd number of bytes, the dangling last byte is dropped
+        const char code[] = "\xff\xfe\x31\x00\x0a";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("1", readfile(code, sizeof(code)-1, {}, &outputList));
+        ASSERT_EQUALS("file0,1,portability_no_eof_newline,No newline at end of file is undefined behavior in C.\n", toString(outputList));
     }
 }
 
