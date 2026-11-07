@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <list>
 #include <sstream>
@@ -140,6 +142,20 @@ static std::string readfile(const char code[], std::size_t size, const simplecpp
 {
     std::vector<std::string> files;
     return makeTokenList(code,size,files,std::string(),dui,outputList).stringify();
+}
+
+/** Write the code to a temporary file and read it with TokenList(filename), so FileStream is used */
+static std::string readfileFromFile(const char code[], std::size_t size, simplecpp::OutputList *outputList = nullptr)
+{
+    const std::string filename = "testrunner_filestream.tmp";
+    {
+        std::ofstream f(filename, std::ios::binary);
+        f.write(code, static_cast<std::streamsize>(size));
+    }
+    std::vector<std::string> files;
+    std::string ret = simplecpp::TokenList(filename, files, {}, outputList).stringify();
+    std::remove(filename.c_str());
+    return ret;
 }
 
 static std::string preprocess(const char code[], std::size_t size, const simplecpp::DUI &dui, simplecpp::OutputList *outputList, std::list<simplecpp::MacroUsage> *macroUsage = nullptr, std::list<simplecpp::IfCond> *ifCond = nullptr, const std::string &file = std::string())
@@ -4197,6 +4213,50 @@ static void readfile_cr_newlines()
     ASSERT_EQUALS("# define A 1\nA", readfile("#define A 1\rA\r"));
 }
 
+static void readfile_filestream()
+{
+    // the edge cases from the other readfile tests, read from a file
+    {
+        const char code[] = "a\rb\rc\r";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("a\nb\nc", readfileFromFile(code, sizeof(code)-1, &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
+    {
+        const char code[] = "a\r\nb\r\nc\r\n";
+        ASSERT_EQUALS("a\nb\nc", readfileFromFile(code, sizeof(code)-1));
+    }
+    {
+        const char code[] = "a\rb\r\nc\n\r\rd\n";
+        ASSERT_EQUALS("a\nb\nc\n\n\nd", readfileFromFile(code, sizeof(code)-1));
+    }
+    {
+        const char code[] = "1'";
+        simplecpp::OutputList outputList;
+        (void)readfileFromFile(code, sizeof(code)-1, &outputList);
+        ASSERT_EQUALS("file0,1,syntax_error,No pair for character (\'). Can't process file. File is either invalid or unicode, which is currently not supported.\n", toString(outputList));
+    }
+    {
+        // UTF-16LE with CR newlines
+        const char code[] = "\xff\xfe\x78\x00\x0d\x00\x79\x00\x0d\x00";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("x\ny", readfileFromFile(code, sizeof(code)-1, &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
+    {
+        // UTF-16BE with CR newlines
+        const char code[] = "\xfe\xff\x00\x78\x00\x0d\x00\x79\x00\x0d";
+        ASSERT_EQUALS("x\ny", readfileFromFile(code, sizeof(code)-1));
+    }
+    {
+        // UTF-16 with an odd number of bytes, the dangling last byte is dropped
+        const char code[] = "\xff\xfe\x31\x00\x0a";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("1", readfileFromFile(code, sizeof(code)-1, &outputList));
+        ASSERT_EQUALS("file0,1,portability_no_eof_newline,No newline at end of file is undefined behavior in C.\n", toString(outputList));
+    }
+}
+
 static void stringify1()
 {
     const char code_c[] = "#include \"A.h\"\n"
@@ -5375,6 +5435,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(readfile_file_not_found);
     TEST_CASE(readfile_no_eof_newline);
     TEST_CASE(readfile_cr_newlines);
+    TEST_CASE(readfile_filestream);
 
     TEST_CASE(stringify1);
 
