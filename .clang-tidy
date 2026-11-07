@@ -20,7 +20,6 @@ Checks: >
         -zircon-*,
         -bugprone-branch-clone,
         -bugprone-easily-swappable-parameters,
-        -bugprone-narrowing-conversions,
         -bugprone-switch-missing-default-case,
         -bugprone-throwing-static-initialization,
         -bugprone-unchecked-string-to-number-conversion,
