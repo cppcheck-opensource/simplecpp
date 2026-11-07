@@ -2658,6 +2658,17 @@ static void ifDefinedHashHash2()
     ASSERT_EQUALS("\n0", preprocess(code, &outputList));
 }
 
+static void ifDefinedHashHash3()
+{
+    const char code[] = "#define ENABLED(x) (defined(x ## _ENABLED) && (x ## _ENABLED))\n"
+                        "#define FOO_ENABLED 1\n"
+                        "#if ENABLED(FOO)\n"
+                        "int x;\n"
+                        "#endif\n";
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("\n\n\nint x ;", preprocess(code, &outputList));
+}
+
 static void ifLogical()
 {
     const char code[] = "#if defined(A) || defined(B)\n"
@@ -5113,6 +5124,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifDefinedInvalid2);
     TEST_CASE(ifDefinedHashHash);
     TEST_CASE(ifDefinedHashHash2);
+    TEST_CASE(ifDefinedHashHash3);
     TEST_CASE(ifLogical);
     TEST_CASE(ifLogicalPrecedence);
     TEST_CASE(ifSizeof);
