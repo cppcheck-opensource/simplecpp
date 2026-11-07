@@ -3022,6 +3022,45 @@ static void ifalt()   // using "and", "or", etc
     ASSERT_EQUALS("\n1", preprocess(code));
 }
 
+static void ifAltUnaryOperators()   // "not" and "compl" anywhere a unary operator is allowed
+{
+    const char * const exprs[] = {
+        // at the start of the expression
+        "not 0",
+        "(not 0)",
+        "not 0 && 1",
+        "compl 0",
+        // after a binary operator, "?" or ":"
+        "1 && not 0",
+        "1 and not 0",
+        "0 || not 0",
+        "1 == not 0",
+        "0 ? 0 : not 0",
+        "1 ? not 0 : 0",
+        // next to another unary operator
+        "not not 1",
+        "not -0",
+        "not ~-1",
+        "not !0 == 0",
+        "compl compl 1 == 1",
+        "compl -1 == 0",
+        "!(compl -1 + 1 == 0)",
+        "-compl 0 == 1",
+        // followed by "("
+        "not (0)",
+        "not(0)",
+        "compl (0) == -1"
+    };
+    for (const char * const expr : exprs) {
+        const std::string code = std::string("#if ") + expr + "\n"
+                                 "1\n"
+                                 "#else\n"
+                                 "2\n"
+                                 "#endif\n";
+        ASSERT_EQUALS("\n1", preprocess(code.c_str()));
+    }
+}
+
 static void ifexpr()
 {
     const char code[] = "#define MACRO()  (1)\n"
@@ -5226,6 +5265,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifInvalidExpression);
     TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
+    TEST_CASE(ifAltUnaryOperators);
     TEST_CASE(ifexpr);
     TEST_CASE(ifUndefFuncStyleMacro);
 

@@ -206,11 +206,23 @@ static bool isAlternativeBinaryOp(const simplecpp::Token *tok, const std::string
             (isValue(tok->next) || tok->next->name || tok->next->op == '('));
 }
 
+static bool isAlternativeOpName(const simplecpp::Token *tok)
+{
+    static const std::set<std::string> altop{"and","or","bitand","bitor","compl","not","not_eq","xor"};
+    return tok->name && altop.find(tok->str()) != altop.end();
+}
+
 static bool isAlternativeUnaryOp(const simplecpp::Token *tok, const std::string &alt)
 {
-    return ((tok->name && tok->str() == alt) &&
-            (!tok->previous || tok->previous->op == '(') &&
-            (tok->next && (tok->next->name || tok->next->number)));
+    if (!tok->name || tok->str() != alt)
+        return false;
+    // a unary operator comes first or after another operator, but not after an operand
+    const simplecpp::Token *prev = tok->previous;
+    if (prev && (isValue(prev) || prev->op == ')' || (prev->name && !isAlternativeOpName(prev))))
+        return false;
+    // it is followed by the start of an operand
+    const simplecpp::Token *next = tok->next;
+    return next && (next->name || next->number || next->isOneOf("(!~+-"));
 }
 
 static std::string replaceAll(std::string s, const std::string& from, const std::string& to)
@@ -1318,7 +1330,7 @@ void simplecpp::TokenList::constFoldUnaryNotPosNeg(simplecpp::Token *tok1)
             tok->setstr(toString(~stringToLL(tok->next->str())));
             deleteToken(tok->next);
         } else {
-            if (tok->previous && (isValue(tok->previous) || tok->previous->name))
+            if (tok->previous && (isValue(tok->previous) || (tok->previous->name && !isAlternativeOpName(tok->previous))))
                 continue;
             if (!isValue(tok->next))
                 continue;
@@ -2992,8 +3004,7 @@ static void simplifyName(simplecpp::TokenList &expr, const simplecpp::DUI &dui)
                 tok->setstr(tok->str() == "true" ? "1" : "0");
                 continue;
             }
-            static const std::set<std::string> altop{"and","or","bitand","bitor","compl","not","not_eq","xor"};
-            if (altop.find(tok->str()) != altop.end()) {
+            if (isAlternativeOpName(tok)) {
                 bool alt;
                 if (tok->str() == "not" || tok->str() == "compl") {
                     alt = isAlternativeUnaryOp(tok,tok->str());
