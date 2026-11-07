@@ -1305,7 +1305,7 @@ void simplecpp::TokenList::constFoldUnaryNotPosNeg(simplecpp::Token *tok)
             tok->setstr(tok->next->str());
             deleteToken(tok->next);
         } else if (tok->op == '!' && tok->next && tok->next->number) {
-            tok->setstr(tok->next->str() == "0" ? "1" : "0");
+            tok->setstr(stringToLL(tok->next->str()) == 0 ? "1" : "0");
             deleteToken(tok->next);
         } else if (tok->op == '~' && tok->next && tok->next->number) {
             tok->setstr(toString(~stringToLL(tok->next->str())));
@@ -1571,7 +1571,7 @@ void simplecpp::TokenList::constFoldQuestionOp(Token *&tok1)
             deleteToken(trueTok);
             deleteToken(falseTok);
         } else {
-            Token * const result = (condTok->str() != "0" ? trueTok : falseTok);
+            Token * const result = (stringToLL(condTok->str()) != 0 ? trueTok : falseTok);
             if (condTok == tok1)
                 tok1 = result;
             deleteToken(condTok->next); // ?

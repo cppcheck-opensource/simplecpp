@@ -2887,6 +2887,32 @@ static void ifShortCircuit()
     ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
 }
 
+static void ifZeroCondition()
+{
+    // a zero value that is not written as 0 is false
+    const char * const exprs[] = {
+        "00 ? 1 : 0",
+        "-0 ? 1 : 0",
+        "-X ? 1 : 0",
+        "0L ? 1 : 0",
+        "!00 ? 0 : 1",
+        "!0L ? 0 : 1"
+    };
+    for (const char * const expr : exprs) {
+        const std::string code = std::string("#if ") + expr + "\n"
+                                 "1\n"
+                                 "#else\n"
+                                 "2\n"
+                                 "#endif\n";
+        ASSERT_EQUALS("\n\n\n2", preprocess(code.c_str()));
+    }
+
+    // the selected operand is evaluated
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("", preprocess("#if 00 ? 1 : 1/0\n#endif\n", &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
+}
+
 static void ifTrueFalse()
 {
     const char code[] = "#if true && !false\n"
@@ -5123,6 +5149,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifoverflow);
     TEST_CASE(ifdiv0);
     TEST_CASE(ifShortCircuit);
+    TEST_CASE(ifZeroCondition);
     TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
     TEST_CASE(ifexpr);
