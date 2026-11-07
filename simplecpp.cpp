@@ -298,7 +298,7 @@ public:
     /**
      * Read the next character. CR and CR LF are returned as LF.
      * At the end of the input, EOF converted to unsigned char is returned
-     * and isGood() becomes false.
+     * and good() becomes false.
      */
     unsigned char readChar() {
         int ch = getUnit();
@@ -336,8 +336,11 @@ public:
         lastChar = EOF;
     }
 
-    /** false when readChar() has reached the end of the input */
-    bool isGood() const {
+    /**
+     * false when readChar() has reached the end of the input.
+     * Unlike std::istream::good(), peekChar() at the end of the input does not make it false.
+     */
+    bool good() const {
         return !atEnd;
     }
 
@@ -761,7 +764,7 @@ static simplecpp::TokenString readNameOrNumber(simplecpp::TokenList::Stream &str
 {
     simplecpp::TokenString currentToken;
     const bool num = !!std::isdigit(ch);
-    while (stream.isGood() && isNameChar(ch)) {
+    while (stream.good() && isNameChar(ch)) {
         currentToken += ch;
         ch = stream.readChar();
         if (num && ch=='\'' && isNameChar(stream.peekChar()))
@@ -787,17 +790,17 @@ static simplecpp::TokenString readNameOrNumber(simplecpp::TokenList::Stream &str
 static simplecpp::TokenString readLineComment(simplecpp::TokenList::Stream &stream, unsigned char ch, const simplecpp::Location &location, unsigned int &multiline, simplecpp::OutputList *outputList)
 {
     simplecpp::TokenString currentToken;
-    while (stream.isGood() && ch != '\n') {
+    while (stream.good() && ch != '\n') {
         currentToken += ch;
         ch = stream.readChar();
         if (ch == '\\') {
             simplecpp::TokenString tmp;
             char tmp_ch = ch;
-            while ((stream.isGood()) && (tmp_ch == '\\' || tmp_ch == ' ' || tmp_ch == '\t')) {
+            while ((stream.good()) && (tmp_ch == '\\' || tmp_ch == ' ' || tmp_ch == '\t')) {
                 tmp += tmp_ch;
                 tmp_ch = stream.readChar();
             }
-            if (!stream.isGood()) {
+            if (!stream.good()) {
                 break;
             }
 
@@ -826,7 +829,7 @@ simplecpp::TokenString simplecpp::TokenList::readBlockComment(Stream &stream, un
     TokenString currentToken = "/*";
     (void)stream.readChar();
     unsigned char ch = stream.readChar();
-    while (stream.isGood()) {
+    while (stream.good()) {
         currentToken += ch;
         if (currentToken.size() >= 4U && endsWith(currentToken, COMMENT_END))
             break;
@@ -853,7 +856,7 @@ void simplecpp::TokenList::readErrorText(Stream &stream, unsigned char ch, Locat
 {
     TokenString currentToken;
     char prev = ' ';
-    while (stream.isGood() && (prev == '\\' || (ch != '\r' && ch != '\n'))) {
+    while (stream.good() && (prev == '\\' || (ch != '\r' && ch != '\n'))) {
         currentToken += ch;
         prev = ch;
         ch = stream.readChar();
@@ -887,9 +890,9 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
     const cppstd_t cppstd = getCppStd(dui.std);
 
     Location location(fileIndex(filename), 1, 1);
-    while (stream.isGood()) {
+    while (stream.good()) {
         unsigned char ch = stream.readChar();
-        if (!stream.isGood())
+        if (!stream.good())
             break;
 
         trailing_nl = false;
@@ -1064,11 +1067,11 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                 currentToken = ch;
                 prefix.resize(prefix.size() - 1);
                 ch = stream.readChar();
-                while (stream.isGood() && ch != '(' && ch != '\n') {
+                while (stream.good() && ch != '(' && ch != '\n') {
                     delim += ch;
                     ch = stream.readChar();
                 }
-                if (!stream.isGood() || ch == '\n') {
+                if (!stream.good() || ch == '\n') {
                     if (outputList) {
                         Output err{
                             Output::SYNTAX_ERROR,
@@ -1080,7 +1083,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                     return;
                 }
                 const std::string endOfRawString(')' + delim + currentToken);
-                while (stream.isGood() && (!endsWith(currentToken, endOfRawString) || currentToken.size() <= 1))
+                while (stream.good() && (!endsWith(currentToken, endOfRawString) || currentToken.size() <= 1))
                     currentToken += stream.readChar();
                 if (!endsWith(currentToken, endOfRawString)) {
                     if (outputList) {
@@ -1723,7 +1726,7 @@ std::string simplecpp::TokenList::readUntil(Stream &stream, const Location &loca
 
     bool backslash = false;
     char ch = 0;
-    while (ch != end && ch != '\r' && ch != '\n' && stream.isGood()) {
+    while (ch != end && ch != '\r' && ch != '\n' && stream.good()) {
         ch = stream.readChar();
         if (backslash && ch == '\n') {
             ch = 0;
@@ -1751,7 +1754,7 @@ std::string simplecpp::TokenList::readUntil(Stream &stream, const Location &loca
         }
     }
 
-    if (!stream.isGood() || ch != end) {
+    if (!stream.good() || ch != end) {
         clear();
         if (outputList) {
             Output err{
