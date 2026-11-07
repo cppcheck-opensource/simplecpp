@@ -620,6 +620,22 @@ static void constFold()
     ASSERT_EQUALS("1", testConstFold("010==8"));
     ASSERT_EQUALS("exception", testConstFold("!1 ? 2 :"));
     ASSERT_EQUALS("exception", testConstFold("?2:3"));
+    ASSERT_EQUALS("0", testConstFold("0 && 1/0"));
+    ASSERT_EQUALS("1", testConstFold("1 || 1/0"));
+    ASSERT_EQUALS("2", testConstFold("1 ? 2 : 1/0"));
+    ASSERT_EQUALS("exception", testConstFold("1 && 1/0"));
+    ASSERT_EQUALS("exception", testConstFold("1/0 && 0"));
+    ASSERT_EQUALS("exception", testConstFold("(1/0) ? 1 : 2"));
+    ASSERT_EQUALS("exception", testConstFold("-(1/0) + 1"));
+    // ?: is right-associative
+    ASSERT_EQUALS("1", testConstFold("1 ? 1 : 0 ? 2 : 3"));
+    ASSERT_EQUALS("3", testConstFold("0 ? 1 : 0 ? 2 : 3"));
+    ASSERT_EQUALS("2", testConstFold("1 ? 2 : 3 ? 4 : 5 ? 6 : 7"));
+    ASSERT_EQUALS("7", testConstFold("0 ? 2 : 0 ? 4 : 0 ? 6 : 7"));
+    ASSERT_EQUALS("6", testConstFold("1 ? 0 ? 5 : 6 : 7"));
+    ASSERT_EQUALS("2", testConstFold("(1 ? 1 : 0) ? 2 : 3"));
+    ASSERT_EQUALS("1", testConstFold("1 ? 1 : (1/0) ? 2 : 3"));
+    ASSERT_EQUALS("exception", testConstFold("0 ? 1 : (1/0) ? 2 : 3"));
 }
 
 #ifdef __CYGWIN__
@@ -2833,6 +2849,42 @@ static void ifdiv0()
                         "#endif\n"
                         "123";
     ASSERT_EQUALS("", preprocess(code));
+}
+
+static void ifShortCircuit()
+{
+    // operands that are not evaluated must not cause errors
+    const char * const exprs[] = {
+        "0 && (1/0)",
+        "!(1 || (1/0))",
+        "0 ? 1/0 : 0",
+        "1 ? 0 : 1/0",
+        "0 && 1 % 0 && 1",
+        "(1 || 1/0) && !(0 && 1/0)  && 0",
+        "0 && (2 + (3 * (1/0)))",
+        "0 && -(1/0)",
+        "0 and (1/0)",
+        "!(1 or 1/0)",
+        "defined(X) and X/0",
+        "0 && 1 bitor (1/0)",
+        "!(1 || (1/0) bitand 1)",
+        "0 and 1 xor (1/0)"
+    };
+    for (const char * const expr : exprs) {
+        const std::string code = std::string("#if ") + expr + "\n"
+                                 "1\n"
+                                 "#else\n"
+                                 "2\n"
+                                 "#endif\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n\n\n2", preprocess(code.c_str(), &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
+
+    // evaluated operands are still checked
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("", preprocess("#if 1 && (1/0)\n#endif\n", &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
 }
 
 static void ifTrueFalse()
@@ -5070,6 +5122,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifif);
     TEST_CASE(ifoverflow);
     TEST_CASE(ifdiv0);
+    TEST_CASE(ifShortCircuit);
     TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
     TEST_CASE(ifexpr);
