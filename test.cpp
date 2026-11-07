@@ -1842,7 +1842,8 @@ static void hashEscapeTrailingBackslash()
                             "#endif\n";
         simplecpp::OutputList outputList;
         preprocess(code, &outputList);
-        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg, toString(outputList));
+        ASSERT_EQUALS(std::string("file0,2,portability_stringify,") + msg +
+                      "file0,2,syntax_error,failed to evaluate #if condition, invalid expression\n", toString(outputList));
     }
     {
         // even number of backslashes is fine
@@ -2939,6 +2940,48 @@ static void ifUnaryOperators()
                                  "2\n"
                                  "#endif\n";
         ASSERT_EQUALS("\n1", preprocess(code.c_str()));
+    }
+}
+
+static void ifInvalidExpression()
+{
+    const char * const exprs[] = {
+        // missing operand
+        "1 +",
+        "(1 +)",
+        "(1 +) + 1",
+        "* 1",
+        "(* 1)",
+        "1 + * 2",
+        "1 <<",
+        "(1 ==)",
+        "1 &",
+        "(1 &&)",
+        "|| 1",
+        "!",
+        "(!)",
+        "-",
+        "~",
+        "(? 1 : 2)",
+        "(1 ? 2 :)",
+        "(1 ? 2 3)",
+        "(1 ? : 2)",
+        // missing operator
+        "1 2",
+        "(1 2)",
+        // empty parentheses
+        "()",
+        "1 + ()",
+        // syntax errors are reported also in operands that are not evaluated
+        "0 && (1 +)"
+    };
+    for (const char * const expr : exprs) {
+        const std::string code = std::string("#if ") + expr + "\n"
+                                 "1\n"
+                                 "#endif\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess(code.c_str(), &outputList));
+        ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, invalid expression\n", toString(outputList));
     }
 }
 
@@ -5180,6 +5223,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifShortCircuit);
     TEST_CASE(ifZeroCondition);
     TEST_CASE(ifUnaryOperators);
+    TEST_CASE(ifInvalidExpression);
     TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
     TEST_CASE(ifexpr);

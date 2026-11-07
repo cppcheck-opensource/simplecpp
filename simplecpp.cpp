@@ -3283,8 +3283,9 @@ static long long evaluate(simplecpp::TokenList &expr, const simplecpp::DUI &dui,
     simplifyName(expr, dui);
     simplifyNumbers(expr);
     expr.constFold();
-    // TODO: handle invalid expressions
-    return expr.cfront() && expr.cfront() == expr.cback() && expr.cfront()->number ? stringToLL(expr.cfront()->str()) : 0LL;
+    if (!expr.cfront() || expr.cfront() != expr.cback() || !expr.cfront()->number)
+        throw std::runtime_error("invalid expression");
+    return stringToLL(expr.cfront()->str());
 }
 
 static const simplecpp::Token *gotoNextLine(const simplecpp::Token *tok)
