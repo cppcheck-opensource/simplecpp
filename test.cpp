@@ -4168,6 +4168,28 @@ static void readfile_no_eof_newline()
         readfile(code, sizeof(code)-1, {}, &outputList);
         ASSERT_EQUALS("", toString(outputList));
     }
+    {
+        // CR is a newline
+        const char code[] = "x\r";
+        simplecpp::OutputList outputList;
+        readfile(code, sizeof(code)-1, {}, &outputList);
+        ASSERT_EQUALS("", toString(outputList));
+    }
+    {
+        const char code[] = "x\r\n";
+        simplecpp::OutputList outputList;
+        readfile(code, sizeof(code)-1, {}, &outputList);
+        ASSERT_EQUALS("", toString(outputList));
+    }
+}
+
+static void readfile_cr_newlines()
+{
+    // CR, CR LF and LF are all newlines
+    ASSERT_EQUALS("a\nb\nc", readfile("a\rb\rc\r"));
+    ASSERT_EQUALS("a\nb\nc", readfile("a\r\nb\r\nc\r\n"));
+    ASSERT_EQUALS("a\nb\nc\n\n\nd", readfile("a\rb\r\nc\n\r\rd\n"));
+    ASSERT_EQUALS("# define A 1\nA", readfile("#define A 1\rA\r"));
 }
 
 static void stringify1()
@@ -5335,6 +5357,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(readfile_error);
     TEST_CASE(readfile_file_not_found);
     TEST_CASE(readfile_no_eof_newline);
+    TEST_CASE(readfile_cr_newlines);
 
     TEST_CASE(stringify1);
 

@@ -295,68 +295,58 @@ class simplecpp::TokenList::Stream {
 public:
     virtual ~Stream() = default;
 
-    virtual int get() = 0;
-    virtual int peek() = 0;
-    virtual void unget() = 0;
-    virtual bool good() = 0;
-
+    /**
+     * Read the next character. CR and CR LF are returned as LF.
+     * At the end of the input, EOF converted to unsigned char is returned
+     * and isGood() becomes false.
+     */
     unsigned char readChar() {
-        auto ch = static_cast<unsigned char>(get());
-
-        // For UTF-16 encoded files the BOM is 0xfeff/0xfffe. If the
-        // character is non-ASCII character then replace it with 0xff
-        if (isUtf16) {
-            const auto ch2 = static_cast<unsigned char>(get());
-            const int ch16 = makeUtf16Char(ch, ch2);
-            ch = static_cast<unsigned char>(((ch16 >= 0x80) ? 0xff : ch16));
+        int ch = getUnit();
+        if (ch == EOF) {
+            atEnd = true;
+            lastChar = EOF;
+            return static_cast<unsigned char>(EOF);
         }
 
         // Handling of newlines..
         if (ch == '\r') {
             ch = '\n';
-
-            int ch2 = get();
-            if (isUtf16) {
-                const int c2 = get();
-                ch2 = makeUtf16Char(ch2, c2);
-            }
-
-            if (ch2 != '\n')
-                ungetChar();
+            const int ch2 = getUnit();
+            if (ch2 != '\n' && ch2 != EOF)
+                buffer.push_back(static_cast<char>(ch2));
         }
 
-        return ch;
+        lastChar = ch;
+        return static_cast<unsigned char>(ch);
     }
 
+    /** The next character, without reading it. EOF at the end of the input. */
     int peekChar() {
-        int ch = peek();
+        const int ch = getUnit();
         if (ch == EOF)
-            return ch;
-
-        // For UTF-16 encoded files the BOM is 0xfeff/0xfffe. If the
-        // character is non-ASCII character then replace it with 0xff
-        if (isUtf16) {
-            (void)get();
-            const auto ch2 = static_cast<unsigned char>(peek());
-            unget();
-            const int ch16 = makeUtf16Char(ch, ch2);
-            ch = (ch16 >= 0x80) ? 0xff : ch16;
-        }
-
-        // Handling of newlines..
-        if (ch == '\r')
-            ch = '\n';
-
-        return ch;
+            return EOF;
+        buffer.push_back(static_cast<char>(ch));
+        return (ch == '\r') ? '\n' : ch;
     }
 
+    /** Put back the character that was last read with readChar() */
     void ungetChar() {
-        unget();
-        if (isUtf16)
-            unget();
+        if (lastChar != EOF)
+            buffer.push_back(static_cast<char>(lastChar));
+        lastChar = EOF;
+    }
+
+    /** false when readChar() has reached the end of the input */
+    bool isGood() const {
+        return !atEnd;
     }
 
 protected:
+    virtual int get() = 0;
+    virtual int peek() = 0;
+    virtual void unget() = 0;
+    virtual bool good() = 0;
+
     void init() {
         // initialize since we use peek() in getAndSkipBOM()
         isUtf16 = false;
@@ -365,6 +355,35 @@ protected:
     }
 
 private:
+    /**
+     * Read the next character from the input, or take it from the buffer.
+     * Newlines are not converted.
+     */
+    int getUnit() {
+        if (!buffer.empty()) {
+            const auto ch = static_cast<unsigned char>(buffer.back());
+            buffer.pop_back();
+            return ch;
+        }
+        if (inputEnd)
+            return EOF;
+        const int ch = get();
+        if (ch == EOF) {
+            inputEnd = true;
+            return EOF;
+        }
+        if (!isUtf16)
+            return ch;
+
+        // For UTF-16 encoded files the BOM is 0xfeff/0xfffe. If the
+        // character is non-ASCII character then replace it with 0xff
+        const int ch2 = get();
+        if (ch2 == EOF)
+            inputEnd = true;
+        const int ch16 = makeUtf16Char(static_cast<unsigned char>(ch), static_cast<unsigned char>(ch2));
+        return (ch16 >= 0x80) ? 0xff : ch16;
+    }
+
     inline int makeUtf16Char(const unsigned char ch, const unsigned char ch2) const {
         return (bom == 0xfeff) ? (ch<<8 | ch2) : (ch2<<8 | ch);
     }
@@ -400,6 +419,15 @@ private:
     }
 
     unsigned short bom;
+
+    /** characters that are read but not used yet. The next character is at the back. */
+    std::string buffer;
+    /** the last character returned by readChar(), EOF if ungetChar() has nothing to put back */
+    int lastChar{EOF};
+    /** readChar() has returned EOF */
+    bool atEnd{false};
+    /** get() has returned EOF */
+    bool inputEnd{false};
 protected:
     bool isUtf16;
 };
@@ -738,7 +766,7 @@ static simplecpp::TokenString readNameOrNumber(simplecpp::TokenList::Stream &str
 {
     simplecpp::TokenString currentToken;
     const bool num = !!std::isdigit(ch);
-    while (stream.good() && isNameChar(ch)) {
+    while (stream.isGood() && isNameChar(ch)) {
         currentToken += ch;
         ch = stream.readChar();
         if (num && ch=='\'' && isNameChar(stream.peekChar()))
@@ -764,17 +792,17 @@ static simplecpp::TokenString readNameOrNumber(simplecpp::TokenList::Stream &str
 static simplecpp::TokenString readLineComment(simplecpp::TokenList::Stream &stream, unsigned char ch, const simplecpp::Location &location, unsigned int &multiline, simplecpp::OutputList *outputList)
 {
     simplecpp::TokenString currentToken;
-    while (stream.good() && ch != '\n') {
+    while (stream.isGood() && ch != '\n') {
         currentToken += ch;
         ch = stream.readChar();
         if (ch == '\\') {
             simplecpp::TokenString tmp;
             char tmp_ch = ch;
-            while ((stream.good()) && (tmp_ch == '\\' || tmp_ch == ' ' || tmp_ch == '\t')) {
+            while ((stream.isGood()) && (tmp_ch == '\\' || tmp_ch == ' ' || tmp_ch == '\t')) {
                 tmp += tmp_ch;
                 tmp_ch = stream.readChar();
             }
-            if (!stream.good()) {
+            if (!stream.isGood()) {
                 break;
             }
 
@@ -803,7 +831,7 @@ simplecpp::TokenString simplecpp::TokenList::readBlockComment(Stream &stream, un
     TokenString currentToken = "/*";
     (void)stream.readChar();
     unsigned char ch = stream.readChar();
-    while (stream.good()) {
+    while (stream.isGood()) {
         currentToken += ch;
         if (currentToken.size() >= 4U && endsWith(currentToken, COMMENT_END))
             break;
@@ -830,7 +858,7 @@ void simplecpp::TokenList::readErrorText(Stream &stream, unsigned char ch, Locat
 {
     TokenString currentToken;
     char prev = ' ';
-    while (stream.good() && (prev == '\\' || (ch != '\r' && ch != '\n'))) {
+    while (stream.isGood() && (prev == '\\' || (ch != '\r' && ch != '\n'))) {
         currentToken += ch;
         prev = ch;
         ch = stream.readChar();
@@ -864,9 +892,9 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
     const cppstd_t cppstd = getCppStd(dui.std);
 
     Location location(fileIndex(filename), 1, 1);
-    while (stream.good()) {
+    while (stream.isGood()) {
         unsigned char ch = stream.readChar();
-        if (!stream.good())
+        if (!stream.isGood())
             break;
 
         trailing_nl = false;
@@ -1041,11 +1069,11 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                 currentToken = ch;
                 prefix.resize(prefix.size() - 1);
                 ch = stream.readChar();
-                while (stream.good() && ch != '(' && ch != '\n') {
+                while (stream.isGood() && ch != '(' && ch != '\n') {
                     delim += ch;
                     ch = stream.readChar();
                 }
-                if (!stream.good() || ch == '\n') {
+                if (!stream.isGood() || ch == '\n') {
                     if (outputList) {
                         Output err{
                             Output::SYNTAX_ERROR,
@@ -1057,7 +1085,7 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
                     return;
                 }
                 const std::string endOfRawString(')' + delim + currentToken);
-                while (stream.good() && (!endsWith(currentToken, endOfRawString) || currentToken.size() <= 1))
+                while (stream.isGood() && (!endsWith(currentToken, endOfRawString) || currentToken.size() <= 1))
                     currentToken += stream.readChar();
                 if (!endsWith(currentToken, endOfRawString)) {
                     if (outputList) {
@@ -1700,7 +1728,7 @@ std::string simplecpp::TokenList::readUntil(Stream &stream, const Location &loca
 
     bool backslash = false;
     char ch = 0;
-    while (ch != end && ch != '\r' && ch != '\n' && stream.good()) {
+    while (ch != end && ch != '\r' && ch != '\n' && stream.isGood()) {
         ch = stream.readChar();
         if (backslash && ch == '\n') {
             ch = 0;
@@ -1728,7 +1756,7 @@ std::string simplecpp::TokenList::readUntil(Stream &stream, const Location &loca
         }
     }
 
-    if (!stream.good() || ch != end) {
+    if (!stream.isGood() || ch != end) {
         clear();
         if (outputList) {
             Output err{
