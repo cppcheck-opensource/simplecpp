@@ -2913,6 +2913,35 @@ static void ifZeroCondition()
     ASSERT_EQUALS("file0,1,syntax_error,failed to evaluate #if condition, division/modulo by zero\n", toString(outputList));
 }
 
+static void ifUnaryOperators()
+{
+    // unary operators in a row
+    const char * const exprs[] = {
+        "!!1",
+        "!-0",
+        "!+0",
+        "!~-1",
+        "- -1",
+        "-!0",
+        "-~0",
+        "~!0",
+        "+-1 == -1",
+        "1 && !-0",
+        "!-X",
+        "-(-1) == 1",
+        "- - -1 == -1",
+        "1 - -1 == 2"
+    };
+    for (const char * const expr : exprs) {
+        const std::string code = std::string("#if ") + expr + "\n"
+                                 "1\n"
+                                 "#else\n"
+                                 "2\n"
+                                 "#endif\n";
+        ASSERT_EQUALS("\n1", preprocess(code.c_str()));
+    }
+}
+
 static void ifTrueFalse()
 {
     const char code[] = "#if true && !false\n"
@@ -5150,6 +5179,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifdiv0);
     TEST_CASE(ifShortCircuit);
     TEST_CASE(ifZeroCondition);
+    TEST_CASE(ifUnaryOperators);
     TEST_CASE(ifTrueFalse);
     TEST_CASE(ifalt); // using "and", "or", etc
     TEST_CASE(ifexpr);
