@@ -2862,7 +2862,13 @@ static void ifShortCircuit()
         "0 && 1 % 0 && 1",
         "(1 || 1/0) && !(0 && 1/0)  && 0",
         "0 && (2 + (3 * (1/0)))",
-        "0 && -(1/0)"
+        "0 && -(1/0)",
+        "0 and (1/0)",
+        "!(1 or 1/0)",
+        "defined(X) and X/0",
+        "0 && 1 bitor (1/0)",
+        "!(1 || (1/0) bitand 1)",
+        "0 and 1 xor (1/0)"
     };
     for (const char * const expr : exprs) {
         const std::string code = std::string("#if ") + expr + "\n"

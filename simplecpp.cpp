@@ -179,14 +179,31 @@ static bool isValidPunctuatorPaste(const std::string &s)
     return isPunctuator(s) || (s.size() >= 2 && s[0] == '.' && std::isdigit(static_cast<unsigned char>(s[1])));
 }
 
+/*
+ * When an operation can't be evaluated (division by zero), its result is an
+ * error value. The error is only reported if the error value is used, so an
+ * operand that is not evaluated, as in "0 && (1/0)", does not cause an error.
+ */
+static const std::string ERROR_VALUE("#error:");
+
+static bool isErrorValue(const simplecpp::Token *tok)
+{
+    return tok && tok->str().compare(0, ERROR_VALUE.size(), ERROR_VALUE) == 0;
+}
+
+static bool isValue(const simplecpp::Token *tok)
+{
+    return tok && (tok->number || isErrorValue(tok));
+}
+
 static bool isAlternativeBinaryOp(const simplecpp::Token *tok, const std::string &alt)
 {
     return (tok->name &&
             tok->str() == alt &&
             tok->previous &&
             tok->next &&
-            (tok->previous->number || tok->previous->name || tok->previous->op == ')') &&
-            (tok->next->number || tok->next->name || tok->next->op == '('));
+            (isValue(tok->previous) || tok->previous->name || tok->previous->op == ')') &&
+            (isValue(tok->next) || tok->next->name || tok->next->op == '('));
 }
 
 static bool isAlternativeUnaryOp(const simplecpp::Token *tok, const std::string &alt)
@@ -1070,23 +1087,6 @@ void simplecpp::TokenList::readfile(Stream &stream, const std::string &filename,
     }
 
     combineOperators();
-}
-
-/*
- * When an operation can't be evaluated (division by zero), its result is an
- * error value. The error is only reported if the error value is used, so an
- * operand that is not evaluated, as in "0 && (1/0)", does not cause an error.
- */
-static const std::string ERROR_VALUE("#error:");
-
-static bool isErrorValue(const simplecpp::Token *tok)
-{
-    return tok && tok->str().compare(0, ERROR_VALUE.size(), ERROR_VALUE) == 0;
-}
-
-static bool isValue(const simplecpp::Token *tok)
-{
-    return tok && (tok->number || isErrorValue(tok));
 }
 
 /**
