@@ -295,6 +295,11 @@ class simplecpp::TokenList::Stream {
 public:
     virtual ~Stream() = default;
 
+    virtual int get() = 0;
+    virtual int peek() = 0;
+    virtual void unget() = 0;
+    virtual bool good() = 0;
+
     /**
      * Read the next character. CR and CR LF are returned as LF.
      * At the end of the input, EOF converted to unsigned char is returned
@@ -342,11 +347,6 @@ public:
     }
 
 protected:
-    virtual int get() = 0;
-    virtual int peek() = 0;
-    virtual void unget() = 0;
-    virtual bool good() = 0;
-
     void init() {
         // initialize since we use peek() in getAndSkipBOM()
         isUtf16 = false;
