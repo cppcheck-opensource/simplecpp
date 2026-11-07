@@ -298,7 +298,6 @@ public:
     virtual int get() = 0;
     virtual int peek() = 0;
     virtual void unget() = 0;
-    virtual bool good() = 0;
 
     /**
      * Read the next character. CR and CR LF are returned as LF.
@@ -454,9 +453,6 @@ namespace {
         void unget() override {
             istr.unget();
         }
-        bool good() override {
-            return istr.good();
-        }
 
     private:
         std::istream &istr;
@@ -474,26 +470,22 @@ namespace {
 
         int get() override {
             if (pos >= size)
-                return lastStatus = EOF;
+                return EOF;
             return str[pos++];
         }
         int peek() override {
             if (pos >= size)
-                return lastStatus = EOF;
+                return EOF;
             return str[pos];
         }
         void unget() override {
             --pos;
-        }
-        bool good() override {
-            return lastStatus != EOF;
         }
 
     private:
         const unsigned char *str;
         const std::size_t size;
         std::size_t pos{};
-        int lastStatus{};
     };
 
     class FileStream : public simplecpp::TokenList::Stream {
@@ -521,7 +513,7 @@ namespace {
         }
 
         int get() override {
-            lastStatus = lastCh = fgetc(file);
+            lastCh = fgetc(file);
             return lastCh;
         }
         int peek() override {
@@ -532,9 +524,6 @@ namespace {
         }
         void unget() override {
             unget_internal(lastCh);
-        }
-        bool good() override {
-            return lastStatus != EOF;
         }
 
     private:
@@ -550,7 +539,6 @@ namespace {
 
         FILE *file;
         int lastCh{};
-        int lastStatus{};
     };
 }
 
