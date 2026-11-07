@@ -1220,26 +1220,83 @@ static bool isAlternativeAndBitandBitor(const simplecpp::Token* tok)
     return isAlternativeBinaryOp(tok, AND) || isAlternativeBinaryOp(tok, BITAND) || isAlternativeBinaryOp(tok, BITOR);
 }
 
+/**
+ * Keep track of whether the code is in a function body. This is not part of
+ * preprocessing, it is used by the cppcheck-specific handling of &= in
+ * combineOperators().
+ * @param executableScope one entry for each open {, true if it is a function
+ *                        body or a block in a function body
+ * @param tok             the current token
+ * @return true if tok is { or }
+ */
+static bool updateExecutableScope(std::stack<bool, std::vector<bool>> &executableScope, const simplecpp::Token *tok)
+{
+    if (tok->op == '{') {
+        if (executableScope.top()) {
+            executableScope.push(true);
+            return true;
+        }
+        const simplecpp::Token *prev = tok->previous;
+        while (prev && prev->isOneOf(";{}("))
+            prev = prev->previous;
+        executableScope.push(prev && prev->op == ')');
+        return true;
+    }
+    if (tok->op == '}') {
+        if (executableScope.size() > 1)
+            executableScope.pop();
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Is tok the & of an unnamed reference parameter with a default value in a
+ * function declaration, as in "void f(x&=2)"? Then "&" and "=" should not be
+ * combined into "&=". This is a cppcheck-specific heuristic, compilers
+ * tokenize "&=" as one operator.
+ * @param tok a & token that is directly followed by =
+ */
+static bool isAnonymousReferenceParameter(const simplecpp::Token *tok)
+{
+    int indentlevel = 0;
+    const simplecpp::Token *start = tok;
+    while (indentlevel >= 0 && start) {
+        if (start->op == ')')
+            ++indentlevel;
+        else if (start->op == '(')
+            --indentlevel;
+        else if (start->isOneOf(";{}"))
+            break;
+        start = start->previous;
+    }
+    if (indentlevel == -1 && start) {
+        const simplecpp::Token * const ftok = start;
+        bool isFuncDecl = ftok->name;
+        while (isFuncDecl) {
+            if (!start->name && start->str() != "::" && start->op != '*' && start->op != '&')
+                isFuncDecl = false;
+            if (!start->previous)
+                break;
+            if (start->previous->isOneOf(";{}:"))
+                break;
+            start = start->previous;
+        }
+        isFuncDecl &= start != ftok && start->name;
+        if (isFuncDecl) {
+            // TODO: we could loop through the parameters here and check if they are correct.
+            return true;
+        }
+    }
+    return false;
+}
+
 void simplecpp::TokenList::combineOperators()
 {
     std::stack<bool, std::vector<bool>> executableScope{{false}};
     for (Token *tok = front(); tok; tok = tok->next) {
-        if (tok->op == '{') {
-            if (executableScope.top()) {
-                executableScope.push(true);
-                continue;
-            }
-            const Token *prev = tok->previous;
-            while (prev && prev->isOneOf(";{}("))
-                prev = prev->previous;
-            executableScope.push(prev && prev->op == ')');
+        if (updateExecutableScope(executableScope, tok))
             continue;
-        }
-        if (tok->op == '}') {
-            if (executableScope.size() > 1)
-                executableScope.pop();
-            continue;
-        }
 
         if (tok->op == '.') {
             // ellipsis ...
@@ -1283,39 +1340,10 @@ void simplecpp::TokenList::combineOperators()
             continue;
 
         if (tok->next->op == '=' && tok->isOneOf("=!<>+-*/%&|^")) {
-            if (tok->op == '&' && !executableScope.top()) {
-                // don't combine &= if it is a anonymous reference parameter with default value:
-                // void f(x&=2)
-                int indentlevel = 0;
-                const Token *start = tok;
-                while (indentlevel >= 0 && start) {
-                    if (start->op == ')')
-                        ++indentlevel;
-                    else if (start->op == '(')
-                        --indentlevel;
-                    else if (start->isOneOf(";{}"))
-                        break;
-                    start = start->previous;
-                }
-                if (indentlevel == -1 && start) {
-                    const Token * const ftok = start;
-                    bool isFuncDecl = ftok->name;
-                    while (isFuncDecl) {
-                        if (!start->name && start->str() != "::" && start->op != '*' && start->op != '&')
-                            isFuncDecl = false;
-                        if (!start->previous)
-                            break;
-                        if (start->previous->isOneOf(";{}:"))
-                            break;
-                        start = start->previous;
-                    }
-                    isFuncDecl &= start != ftok && start->name;
-                    if (isFuncDecl) {
-                        // TODO: we could loop through the parameters here and check if they are correct.
-                        continue;
-                    }
-                }
-            }
+            // don't combine &= if it is a anonymous reference parameter with default value:
+            // void f(x&=2)
+            if (tok->op == '&' && !executableScope.top() && isAnonymousReferenceParameter(tok))
+                continue;
             tok->setstr(tok->str() + "=");
             deleteToken(tok->next);
         } else if ((tok->op == '|' || tok->op == '&') && tok->op == tok->next->op) {
