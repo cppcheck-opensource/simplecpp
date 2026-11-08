@@ -1352,10 +1352,11 @@ static bool isAnonymousReferenceParameter(const simplecpp::Token *tok)
     return false;
 }
 
-/** Append the next token to tok, and delete the next token */
+/** Append the next token to tok, and delete the next token. tok gets the whitespace after the next token. */
 static void combineWithNext(simplecpp::TokenList &tokens, simplecpp::Token *tok)
 {
     tok->setstr(tok->str() + tok->next->str());
+    tok->whitespaceahead = tok->next->whitespaceahead;
     tokens.deleteToken(tok->next);
 }
 
