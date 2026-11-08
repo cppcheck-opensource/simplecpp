@@ -2988,7 +2988,7 @@ namespace simplecpp {
      * The result of an expansion is pushed back onto the input and scanned again, so a
      * function-like macro whose arguments follow the expansion in the source is found by
      * normal rescanning.
-     * Work in progress: __VA_OPT__ and "defined" in a replacement list are not handled yet.
+     * Work in progress: __VA_OPT__ is not handled yet.
      */
     class HideSetExpander {
     public:
@@ -3243,7 +3243,7 @@ namespace simplecpp {
 
         /**
          * The tokens that a token in the replacement list is replaced by: a parameter by its
-         * argument, # and a parameter by a string literal, and other tokens by a copy.
+         * argument, # and a parameter by a string literal, "defined X" by 1 or 0, and other tokens by a copy.
          * @param operand           destination tokenlist
          * @param macro             the macro
          * @param tok               the token in the replacement list; for # it is moved to the parameter
@@ -3251,6 +3251,22 @@ namespace simplecpp {
          * @param expand            use the expanded argument for a parameter
          */
         void getOperand(TokenList &operand, const Macro &macro, const Token *&tok, const MacroCall &call, bool expand) const {
+            // "defined X" is replaced by 1 or 0
+            const Token *first;
+            const Token *second;
+            const Token *last;
+            if (tok->str() == DEFINED && Macro::findDefinedOperand(tok, first, second, last)) {
+                const std::string macroName = Macro::definedMacroName(first, second, [&](const Token *argtok, std::string &text) {
+                    const unsigned int argnr = getParameter(macro, argtok);
+                    if (argnr >= call.arguments.size())
+                        return false;
+                    text = call.arguments[argnr].cback() ? call.arguments[argnr].cback()->str() : "";
+                    return true;
+                });
+                operand.push_back(newToken((macros.find(macroName) != macros.end()) ? "1" : "0", macro, last->whitespaceahead));
+                tok = last;
+                return;
+            }
             const Token * const next = (tok->next != macro.endToken) ? tok->next : nullptr;
             // # is an operator in a function-like macro when it is followed by a parameter
             const unsigned int hashArg = (tok->op == '#') ? getParameter(macro, next) : ~0U;
@@ -3288,8 +3304,6 @@ namespace simplecpp {
                     tok = tok->next;
                     continue;
                 }
-                if (tok->str() == DEFINED)
-                    throw unsupported(loc, "defined");
                 const Token * const operandTok = tok;
                 const bool parameter = getParameter(macro, tok) < call.arguments.size();
                 // an argument is not expanded when it is an operand of ##

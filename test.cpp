@@ -2996,7 +2996,6 @@ static void ifDefinedNoPar()
 
 static void ifDefinedNested()
 {
-    HIDESET_EXPANSION_TODO(); // defined in a replacement list
     const char code[] = "#define FOODEF defined(FOO)\n"
                         "#if FOODEF\n"
                         "X\n"
@@ -3009,7 +3008,6 @@ static void ifDefinedNested()
 
 static void ifDefinedNestedNoPar()
 {
-    HIDESET_EXPANSION_TODO(); // defined in a replacement list
     const char code[] = "#define FOODEF defined FOO\n"
                         "#if FOODEF\n"
                         "X\n"
@@ -3038,7 +3036,6 @@ static void ifDefinedInvalid2()
 
 static void ifDefinedHashHash()
 {
-    HIDESET_EXPANSION_TODO(); // defined in a replacement list
     const char code[] = "#define ENABLE(FEATURE)  defined ENABLE_##FEATURE\n"
                         "#define ENABLE_FOO 1\n"
                         "#if ENABLE(FOO)\n"
@@ -3053,7 +3050,6 @@ static void ifDefinedHashHash()
 
 static void ifDefinedHashHash2()
 {
-    HIDESET_EXPANSION_TODO(); // defined in a replacement list
     // #409
     // do not crash when expanding P()  (as ## rhs is "null")
     // note: gcc outputs "defined E"
@@ -3065,7 +3061,6 @@ static void ifDefinedHashHash2()
 
 static void definedAtEndOfFile()
 {
-    HIDESET_EXPANSION_TODO(); // defined in a replacement list
     // "defined" from a macro expansion is undefined behavior; gcc outputs "defined" here.
     // The operand is the last token of the file.
     const char code[] = "#define X\n"
