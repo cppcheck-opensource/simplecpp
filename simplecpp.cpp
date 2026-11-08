@@ -2209,17 +2209,27 @@ namespace simplecpp {
             return callEnd->next;
         }
 
-        /** Returns the macro when the last token of @p temp is the name of a
-         *  function-like macro that the rescan can still expand; nullptr otherwise */
-        static const Macro *trailingMacro(const TokenList &temp, const MacroMap &macros, const std::set<TokenString> &expandedmacros) {
-            if (!temp.cback() || !temp.cback()->name || temp.cback()->skippedByRescan)
+        /** Returns the macro when @p tok is the name of a function-like macro
+         *  that the rescan can still expand; nullptr otherwise */
+        static const Macro *callableMacro(const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros) {
+            if (!tok || !tok->name || tok->skippedByRescan)
                 return nullptr;
-            const MacroMap::const_iterator it = macros.find(temp.cback()->str());
-            if (it == macros.end() || expandedmacros.find(temp.cback()->str()) != expandedmacros.end())
+            const MacroMap::const_iterator it = macros.find(tok->str());
+            if (it == macros.end() || expandedmacros.find(tok->str()) != expandedmacros.end())
                 return nullptr;
-            if (!it->second.functionLike() || temp.cback()->isExpandedFrom(&it->second))
+            if (!it->second.functionLike() || tok->isExpandedFrom(&it->second))
                 return nullptr;
             return &it->second;
+        }
+
+        /** Mark @p tok when it is the name of a macro that is being expanded, so
+         *  that it is never expanded later */
+        static void markExpanding(Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros) {
+            if (!tok->name || expandedmacros.find(tok->str()) == expandedmacros.end())
+                return;
+            const MacroMap::const_iterator it = macros.find(tok->str());
+            if (it != macros.end())
+                tok->markExpandedFrom(&it->second);
         }
 
         /** A macro call that expanded to nothing came after the last token of
@@ -2310,7 +2320,7 @@ namespace simplecpp {
          *  consumed (tok->next when no call was expanded). */
         template<class GatherCall>
         const Token *expandTrailingCalls(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, OutputList *outputList, GatherCall gatherCall) const {
-            while (const Macro * const calledMacro = trailingMacro(temp, macros, expandedmacros)) {
+            while (const Macro * const calledMacro = callableMacro(temp.cback(), macros, expandedmacros)) {
                 TokenList call(files);
                 const Token * const last = gatherCall(call, temp.cback(), tok);
                 if (!last)
@@ -2350,18 +2360,28 @@ namespace simplecpp {
          *  when the macro name and its '(' were separated by tokens that expanded to
          *  nothing, as in "f EMPTY() (1)". The result of each call is rescanned
          *  against the tokens that follow it. Names of macros that are being expanded
-         *  are marked so that they are never expanded later. */
+         *  are marked so that they are never expanded later. The marks that the
+         *  pre-expansion left on the tokens do not apply to this rescan. */
         void rescanArg(TokenList &tokens, const Location &loc, const MacroMap &macros, const std::set<TokenString> &expandedmacros, OutputList *outputList) const {
+            // Usually the pre-expansion has left no call behind. Then the tokens are
+            // only changed in place, which avoids copying them at each nesting level.
+            bool hasCall = false;
+            for (Token *tok = tokens.front(); tok; tok = tok->next) {
+                tok->skippedByRescan = false;
+                if (hasCall)
+                    continue;
+                hasCall = sameline(tok, tok->next) && tok->next->op == '(' && callableMacro(tok, macros, expandedmacros) != nullptr;
+                if (!hasCall)
+                    markExpanding(tok, macros, expandedmacros);
+            }
+            if (!hasCall)
+                return;
             TokenList input(files);
             input.takeTokens(tokens);
             for (const Token *tok = input.cfront(); tok;) {
                 TokenList temp(files);
                 temp.push_back(new Token(*tok));
-                if (tok->name && expandedmacros.find(tok->str()) != expandedmacros.end()) {
-                    const MacroMap::const_iterator it = macros.find(tok->str());
-                    if (it != macros.end())
-                        temp.back()->markExpandedFrom(&it->second);
-                }
+                markExpanding(temp.back(), macros, expandedmacros);
                 tok = expandTrailingCalls(tokens, temp, loc, tok, macros, expandedmacros, outputList, [](TokenList &call, const Token *nameTok, const Token *tok2) {
                     return gatherCall(call, nameTok, tok2);
                 });
@@ -2470,8 +2490,9 @@ namespace simplecpp {
 
         /** Append the fully macro-expanded argument for parameter @p tok to @p output.
          *  @p hasMacroName, when given, is set when the argument held a macro name
-         *  (otherwise the output cannot hold one). Returns false when @p tok is not
-         *  a parameter. */
+         *  (otherwise the output cannot hold one); the caller then passes the output
+         *  to rescanArg, which clears the marks that the pre-expansion left on it.
+         *  Returns false when @p tok is not a parameter. */
         bool expandArg(TokenList &output, const Token *tok, const Location &loc, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens, OutputList *outputList, bool *hasMacroName = nullptr) const {
             if (!tok->name)
                 return false;
@@ -2515,12 +2536,14 @@ namespace simplecpp {
             if (tok->whitespaceahead && output.back())
                 output.back()->whitespaceahead = true;
             if (macroName) {
-                // the substituted tokens are rescanned again, so the marks that the
-                // expansions above left on them do not apply
-                for (Token *tok2 = outputEnd ? outputEnd->next : output.front(); tok2; tok2 = tok2->next)
-                    tok2->skippedByRescan = false;
-                if (hasMacroName)
+                if (hasMacroName) {
                     *hasMacroName = true;
+                } else {
+                    // the substituted tokens are rescanned again, so the marks that the
+                    // expansions above left on them do not apply
+                    for (Token *tok2 = outputEnd ? outputEnd->next : output.front(); tok2; tok2 = tok2->next)
+                        tok2->skippedByRescan = false;
+                }
             }
             return true;
         }
