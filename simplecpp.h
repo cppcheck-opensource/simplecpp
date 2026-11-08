@@ -117,8 +117,6 @@ namespace simplecpp {
     };
 #endif // defined(__cpp_lib_string_view) && !defined(__cpp_lib_span)
 
-    class Macro;
-
     /**
      * Location in source code
      */
@@ -212,17 +210,17 @@ namespace simplecpp {
 
         /**
          * The hide set holds the macros that this token must not be expanded into.
-         * Set it to the hide set of tok, with m added.
+         * Set it to the hide set of tok, with the macro macroName added.
          */
-        void setHideSet(const Token *tok, const Macro* m) {
+        void setHideSet(const Token *tok, const TokenString &macroName) {
             mHideSet = tok->mHideSet;
-            mHideSet.insert(m);
+            mHideSet.insert(macroName);
         }
-        bool isInHideSet(const Macro* m) const {
-            return mHideSet.find(m) != mHideSet.end();
+        bool isInHideSet(const TokenString &macroName) const {
+            return mHideSet.find(macroName) != mHideSet.end();
         }
-        void addToHideSet(const Macro* m) {
-            mHideSet.insert(m);
+        void addToHideSet(const TokenString &macroName) {
+            mHideSet.insert(macroName);
         }
 
         void printAll() const;
@@ -238,7 +236,7 @@ namespace simplecpp {
 
         TokenString string;
 
-        std::set<const Macro*> mHideSet;
+        std::set<TokenString> mHideSet;
     };
 
     /** Output from preprocessor */

@@ -2006,7 +2006,7 @@ namespace simplecpp {
                 if (output2.cfront() != output2.cback() && macro2tok->str() == this->name())
                     break;
                 const MacroMap::const_iterator macro = macros.find(macro2tok->str());
-                if (macro == macros.end() || !macro->second.functionLike() || macro2tok->isInHideSet(&macro->second))
+                if (macro == macros.end() || !macro->second.functionLike() || macro2tok->isInHideSet(macro->first))
                     break;
                 TokenList rawtokens2(inputFiles);
                 const Location loc(macro2tok->location);
@@ -2118,7 +2118,7 @@ namespace simplecpp {
             if (replaced)
                 tok->macro = nameTokDef->str();
             if (expandedFromToken) {
-                tok->setHideSet(expandedFromToken, this);
+                tok->setHideSet(expandedFromToken, name());
                 tok->whitespaceahead = expandedFromToken->whitespaceahead;
             }
             return tok;
@@ -2508,7 +2508,7 @@ namespace simplecpp {
             const MacroMap::const_iterator it = macros.find(temp.cback()->str());
             if (it == macros.end() || expandedmacros.find(temp.cback()->str()) != expandedmacros.end())
                 return nullptr;
-            if (!it->second.functionLike() || temp.cback()->isInHideSet(&it->second))
+            if (!it->second.functionLike() || temp.cback()->isInHideSet(it->first))
                 return nullptr;
             return &it->second;
         }
@@ -2604,7 +2604,7 @@ namespace simplecpp {
 
             output.push_back(newMacroToken(tok->str(), loc, true, tok));
             if (it != macros.end())
-                output.back()->addToHideSet(&it->second);
+                output.back()->addToHideSet(it->first);
             return tok->next;
         }
 
@@ -2680,7 +2680,7 @@ namespace simplecpp {
             const Token * const argEnd = parametertokens[argnr + 1U];
             for (const Token *partok = parametertokens[argnr]->next; partok != argEnd;) {
                 const MacroMap::const_iterator it = macros.find(partok->str());
-                if (it != macros.end() && !partok->isInHideSet(&it->second) && (partok->str() == name() || expandedmacros.find(partok->str()) == expandedmacros.end())) {
+                if (it != macros.end() && !partok->isInHideSet(it->first) && (partok->str() == name() || expandedmacros.find(partok->str()) == expandedmacros.end())) {
                     std::set<TokenString> expandedmacros2(expandedmacros); // temporary amnesia to allow reexpansion of currently expanding macros during argument evaluation
                     expandedmacros2.erase(name());
                     TokenList temp(files);
