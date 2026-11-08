@@ -2988,7 +2988,7 @@ namespace simplecpp {
      * The result of an expansion is pushed back onto the input and scanned again, so a
      * function-like macro whose arguments follow the expansion in the source is found by
      * normal rescanning.
-     * Work in progress: __VA_OPT__ is not handled yet.
+     * Work in progress: the old Token::macro and location rules are not followed yet.
      */
     class HideSetExpander {
     public:
@@ -3072,10 +3072,6 @@ namespace simplecpp {
             /** there is whitespace after the call */
             bool whitespaceAfter{};
         };
-
-        static Macro::Error unsupported(const Location &loc, const std::string &what) {
-            return {loc, what + " is not supported by the hide-set expansion yet"};
-        }
 
         /** Expand the pending tokens of the input. Source tokens are only read for macro arguments. */
         void expandInput(TokenList &output, Input &input) {
@@ -3234,6 +3230,37 @@ namespace simplecpp {
             result.takeTokens(operand);
         }
 
+        /** tok is __VA_OPT__ in the replacement list of a variadic macro */
+        static bool isVaOpt(const Macro &macro, const Token *tok) {
+            return macro.variadicOpt && tok && tok != macro.endToken && tok->str() == "__VA_OPT__";
+        }
+
+        /**
+         * __VA_OPT__(content) is replaced by the content, or by nothing (a placemarker)
+         * when the variable arguments are macro expanded to nothing (C23 6.10.5.1).
+         * @param operand destination tokenlist
+         * @param macro   the macro
+         * @param tok     the __VA_OPT__ token, it is moved to the closing )
+         * @param call    the macro call
+         */
+        void getVaOpt(TokenList &operand, const Macro &macro, const Token *&tok, const MacroCall &call) const {
+            // the parentheses were checked when the macro was defined
+            const Token * const lpar = tok->next;
+            const Token *rpar = lpar->next;
+            for (int par = 1; rpar != macro.endToken; rpar = rpar->next) {
+                if (rpar->op == '(')
+                    ++par;
+                else if (rpar->op == ')' && --par == 0)
+                    break;
+            }
+            tok = rpar;
+            const bool noVariableArguments = call.expandedArguments.empty() || call.expandedArguments.back().empty();
+            if (!noVariableArguments)
+                substituteRange(operand, macro, call, lpar->next, rpar);
+            if (operand.back())
+                operand.back()->whitespaceahead = rpar->whitespaceahead;
+        }
+
         /** A new token from the replacement list of macro, Token::macro is the macro name */
         Token *newToken(const TokenString &str, const Macro &macro, bool whitespaceahead) const {
             auto *tok = new Token(str, loc, whitespaceahead);
@@ -3267,7 +3294,19 @@ namespace simplecpp {
                 tok = last;
                 return;
             }
+            if (isVaOpt(macro, tok)) {
+                getVaOpt(operand, macro, tok, call);
+                return;
+            }
             const Token * const next = (tok->next != macro.endToken) ? tok->next : nullptr;
+            if (tok->op == '#' && isVaOpt(macro, next)) {
+                // #__VA_OPT__(content): the content as a string literal
+                tok = next;
+                TokenList content(files);
+                getVaOpt(content, macro, tok, call);
+                operand.push_back(newToken(stringify(content, loc, macro.name(), outputList), macro, tok->whitespaceahead));
+                return;
+            }
             // # is an operator in a function-like macro when it is followed by a parameter
             const unsigned int hashArg = (tok->op == '#') ? getParameter(macro, next) : ~0U;
             if (hashArg < call.arguments.size()) {
@@ -3333,8 +3372,6 @@ namespace simplecpp {
          * @param call   the macro call
          */
         void substitute(TokenList &result, const Macro &macro, const MacroCall &call) const {
-            if (macro.variadicOpt)
-                throw unsupported(loc, "__VA_OPT__");
             substituteRange(result, macro, call, macro.valueToken, macro.endToken);
             for (Token *tok = result.front(); tok; tok = tok->next) {
                 tok->location = loc;

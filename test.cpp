@@ -1514,7 +1514,6 @@ static void define_va_args_4() // cppcheck trac #9754
 
 static void define_va_opt_1()
 {
-    HIDESET_EXPANSION_TODO(); // __VA_OPT__
     const char code[] = "#define p1(fmt, args...) printf(fmt __VA_OPT__(,) args)\n"
                         "p1(\"hello\");\n"
                         "p1(\"%s\", \"hello\");\n";
@@ -1526,7 +1525,6 @@ static void define_va_opt_1()
 
 static void define_va_opt_2()
 {
-    HIDESET_EXPANSION_TODO(); // __VA_OPT__
     const char code[] = "#define err(...)\\\n"
                         "__VA_OPT__(\\\n"
                         "printf(__VA_ARGS__);\\\n"
@@ -1637,7 +1635,6 @@ static void define_va_opt_7()
 
 static void define_va_opt_8()
 {
-    HIDESET_EXPANSION_TODO(); // __VA_OPT__
     const char code[] = "#define f(...) #__VA_OPT__(x)\n"
                         "const char* v1 = f();\n";
 
@@ -2540,7 +2537,6 @@ static void macro_c11_example7() // C11 6.10.3.5 EXAMPLE 7
 
 static void macro_c23_va_opt_examples() // C23 6.10.5.1 EXAMPLE
 {
-    HIDESET_EXPANSION_TODO(); // __VA_OPT__
     const char code[] =
         "#define F(...) f(0 __VA_OPT__(,) __VA_ARGS__)\n"
         "#define G(X, ...) f(0, X __VA_OPT__(,) __VA_ARGS__)\n"
@@ -5005,6 +5001,85 @@ static void hideSetExpansion_empty()
                   "< > < >", preprocess(code));
 }
 
+// __VA_OPT__ (C23 6.10.5.1). The results are the same as gcc gives.
+static void hideSetExpansion_va_opt_empty_after_expansion()
+{
+    const char code[] = "#define F(...) <__VA_OPT__(x)>\n"
+                        "#define E\n"
+                        "F() F(E) F(1)\n";
+    // TODO: the old macro expansion is wrong
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n"
+                                     "\n"
+                                     "< > < > < x >",
+                                     "\n"
+                                     "\n"
+                                     "< > < x > < x >",
+                                     preprocess(code));
+}
+
+static void hideSetExpansion_va_opt_hash()
+{
+    const char code[] = "#define X 1\n"
+                        "#define F(a,...) #__VA_OPT__(a b)\n"
+                        "F(X,2) F(X)\n";
+    // TODO: the old macro expansion is wrong
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n"
+                                     "\n"
+                                     "\"1 b\" \"\"",
+                                     "\n"
+                                     "\n"
+                                     "\"X\" b \"\"",
+                                     preprocess(code));
+}
+
+static void hideSetExpansion_va_opt_hashhash()
+{
+    const char code[] = "#define F(a,...) a ## __VA_OPT__(b c) ## d\n"
+                        "F(x,1) F(x)\n";
+    // TODO: the old macro expansion is wrong
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n"
+                                     "xb cd xd",
+                                     "\n"
+                                     "xb cd x# \"d\"",
+                                     preprocess(code));
+}
+
+static void hideSetExpansion_va_opt_hash_in_content()
+{
+    const char code[] = "#define F(a,...) __VA_OPT__(a##a) __VA_OPT__(#a)\n"
+                        "F(x,1)\n";
+    ASSERT_EQUALS("\n"
+                  "xx \"x\"", preprocess(code));
+}
+
+static void hideSetExpansion_va_opt_rescan()
+{
+    const char code[] = "#define LP (\n"
+                        "#define F(...) __VA_OPT__(LP)\n"
+                        "F(1)\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "(", preprocess(code));
+}
+
+static void hideSetExpansion_va_opt_comma()
+{
+    const char code[] = "#define F(a,...) f(a __VA_OPT__(,) __VA_ARGS__)\n"
+                        "#define X 1\n"
+                        "F(X) F(X,X)\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "f ( 1 ) f ( 1 , 1 )", preprocess(code));
+}
+
+static void hideSetExpansion_va_opt_parentheses()
+{
+    const char code[] = "#define F(...) __VA_OPT__((__VA_ARGS__))\n"
+                        "F(a,(b)) F()\n";
+    ASSERT_EQUALS("\n"
+                  "( a , ( b ) )", preprocess(code));
+}
+
 static void undef()
 {
     const char code[] = "#define A\n"
@@ -6099,6 +6174,13 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(hideSetExpansion_deep);
     TEST_CASE(hideSetExpansion_q_example);
     TEST_CASE(hideSetExpansion_empty);
+    TEST_CASE(hideSetExpansion_va_opt_empty_after_expansion);
+    TEST_CASE(hideSetExpansion_va_opt_hash);
+    TEST_CASE(hideSetExpansion_va_opt_hashhash);
+    TEST_CASE(hideSetExpansion_va_opt_hash_in_content);
+    TEST_CASE(hideSetExpansion_va_opt_rescan);
+    TEST_CASE(hideSetExpansion_va_opt_comma);
+    TEST_CASE(hideSetExpansion_va_opt_parentheses);
 
     TEST_CASE(undef);
 
