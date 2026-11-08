@@ -2286,6 +2286,29 @@ namespace simplecpp {
             return sameline(lpar,tok) ? tok : nullptr;
         }
 
+        /**
+         * Expand the built-in macros __FILE__, __LINE__ and __COUNTER__.
+         * The usage must already be added to usageList, __COUNTER__ is the number of earlier usages.
+         * @param output      destination tokenlist
+         * @param loc         location of the usage
+         * @param nameTokInst the macro name
+         * @return true if the macro is built-in and its value is added to output
+         */
+        bool expandBuiltin(TokenList &output, const Location &loc, const Token *nameTokInst) const {
+            std::string value;
+            if (nameTokInst->str() == "__FILE__")
+                value = '\"' + output.file(loc) + '\"';
+            else if (nameTokInst->str() == "__LINE__")
+                value = toString(loc.line);
+            else if (nameTokInst->str() == "__COUNTER__")
+                value = toString(usageList.size() - 1U);
+            else
+                return false;
+            output.push_back(new Token(value, loc));
+            output.back()->macro = nameTokInst->str();
+            return true;
+        }
+
         const Token * expand(TokenList & output, const Location &loc, const Token * const nameTokInst, const MacroMap &macros, std::set<TokenString> expandedmacros, OutputList *outputList) const {
             expandedmacros.insert(nameTokInst->str());
 
@@ -2295,21 +2318,8 @@ namespace simplecpp {
 
             usageList.emplace_back(loc);
 
-            if (nameTokInst->str() == "__FILE__") {
-                output.push_back(new Token('\"'+output.file(loc)+'\"', loc));
-                output.back()->macro = "__FILE__";
+            if (expandBuiltin(output, loc, nameTokInst))
                 return nameTokInst->next;
-            }
-            if (nameTokInst->str() == "__LINE__") {
-                output.push_back(new Token(toString(loc.line), loc));
-                output.back()->macro = "__LINE__";
-                return nameTokInst->next;
-            }
-            if (nameTokInst->str() == "__COUNTER__") {
-                output.push_back(new Token(toString(usageList.size()-1U), loc));
-                output.back()->macro = "__COUNTER__";
-                return nameTokInst->next;
-            }
 
             const bool calledInDefine = (loc.fileIndex != nameTokInst->location.fileIndex ||
                                          loc.line < nameTokInst->location.line);
