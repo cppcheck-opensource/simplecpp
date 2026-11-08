@@ -3127,6 +3127,37 @@ namespace simplecpp {
         }
 
         /**
+         * The tokens that a token in the replacement list is replaced by: a parameter by its
+         * argument, # and a parameter by a string literal, and other tokens by a copy.
+         * @param operand           destination tokenlist
+         * @param macro             the macro
+         * @param tok               the token in the replacement list; for # it is moved to the parameter
+         * @param arguments         the arguments as written in the call
+         * @param expandedArguments the arguments, macro expanded
+         * @param expand            use the expanded argument for a parameter
+         */
+        void getOperand(TokenList &operand, const Macro &macro, const Token *&tok, const std::vector<TokenList> &arguments, const std::vector<TokenList> &expandedArguments, bool expand) const {
+            const Token * const next = (tok->next != macro.endToken) ? tok->next : nullptr;
+            // # is an operator in a function-like macro when it is followed by a parameter
+            const unsigned int hashArg = (tok->op == '#') ? getParameter(macro, next) : ~0U;
+            if (hashArg < arguments.size()) {
+                operand.push_back(new Token(stringify(arguments[hashArg], loc, macro.name(), outputList), loc, next->whitespaceahead));
+                operand.back()->macro = macro.name();
+                tok = next;
+                return;
+            }
+            const unsigned int argnr = getParameter(macro, tok);
+            if (argnr < arguments.size()) {
+                const TokenList &argument = expand ? expandedArguments[argnr] : arguments[argnr];
+                for (const Token *argtok = argument.cfront(); argtok; argtok = argtok->next)
+                    operand.push_back(new Token(*argtok));
+                return;
+            }
+            operand.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
+            operand.back()->macro = macro.name();
+        }
+
+        /**
          * The replacement list of the macro, with the parameters replaced by the arguments.
          * @param result            destination tokenlist
          * @param macro             the macro
@@ -3144,25 +3175,13 @@ namespace simplecpp {
                     throw unsupported(loc, "##");
                 if (tok->str() == DEFINED)
                     throw unsupported(loc, "defined");
-                // # is an operator in a function-like macro when it is followed by a parameter
-                const unsigned int hashArg = (tok->op == '#') ? getParameter(macro, next) : ~0U;
-                if (hashArg < arguments.size()) {
-                    result.push_back(new Token(stringify(arguments[hashArg], loc, macro.name(), outputList), loc, next->whitespaceahead));
-                    result.back()->macro = macro.name();
-                    tok = next;
-                    continue;
-                }
-                const unsigned int argnr = getParameter(macro, tok);
-                if (argnr < expandedArguments.size()) {
-                    for (const Token *argtok = expandedArguments[argnr].cfront(); argtok; argtok = argtok->next)
-                        result.push_back(new Token(*argtok));
-                    // the whitespace after the parameter comes after the argument
-                    if (tok->whitespaceahead && result.back())
-                        result.back()->whitespaceahead = true;
-                } else {
-                    result.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
-                    result.back()->macro = macro.name();
-                }
+                const bool parameter = getParameter(macro, tok) < arguments.size();
+                TokenList operand(files);
+                getOperand(operand, macro, tok, arguments, expandedArguments, true);
+                result.takeTokens(operand);
+                // the whitespace after a parameter comes after its argument
+                if (parameter && tok->whitespaceahead && result.back())
+                    result.back()->whitespaceahead = true;
             }
             for (Token *tok = result.front(); tok; tok = tok->next) {
                 tok->location = loc;
