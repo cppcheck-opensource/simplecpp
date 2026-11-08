@@ -3198,6 +3198,13 @@ namespace simplecpp {
             result.takeTokens(operand);
         }
 
+        /** A new token from the replacement list of macro, Token::macro is the macro name */
+        Token *newToken(const TokenString &str, const Macro &macro, bool whitespaceahead) const {
+            auto *tok = new Token(str, loc, whitespaceahead);
+            tok->macro = macro.name();
+            return tok;
+        }
+
         /**
          * The tokens that a token in the replacement list is replaced by: a parameter by its
          * argument, # and a parameter by a string literal, and other tokens by a copy.
@@ -3212,8 +3219,7 @@ namespace simplecpp {
             // # is an operator in a function-like macro when it is followed by a parameter
             const unsigned int hashArg = (tok->op == '#') ? getParameter(macro, next) : ~0U;
             if (hashArg < call.arguments.size()) {
-                operand.push_back(new Token(stringify(call.arguments[hashArg], loc, macro.name(), outputList), loc, next->whitespaceahead));
-                operand.back()->macro = macro.name();
+                operand.push_back(newToken(stringify(call.arguments[hashArg], loc, macro.name(), outputList), macro, next->whitespaceahead));
                 tok = next;
                 return;
             }
@@ -3224,8 +3230,7 @@ namespace simplecpp {
                     operand.push_back(new Token(*argtok));
                 return;
             }
-            operand.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
-            operand.back()->macro = macro.name();
+            operand.push_back(newToken(tok->str(), macro, tok->whitespaceahead));
         }
 
         /**
