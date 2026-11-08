@@ -2570,40 +2570,57 @@ namespace simplecpp {
                 return recursiveExpandToken(output, temp, loc, tok2, macros, expandedmacros, parametertokens, outputList);
             }
 
-            if (tok->str() == DEFINED) {
-                const Token * const tok2 = tok->next;
-                const Token * const tok3 = tok2 ? tok2->next : nullptr;
-                const Token * const tok4 = tok3 ? tok3->next : nullptr;
-                const Token *defToken = nullptr;
-                const Token *lastToken = nullptr;
-                if (sameline(tok, tok4) && tok2->op == '(' && tok3->name && tok4->op == ')') {
-                    defToken = tok3;
-                    lastToken = tok4;
-                } else if (sameline(tok,tok2) && tok2->name) {
-                    defToken = lastToken = tok2;
-                }
-                if (defToken) {
-                    std::string macroName = defToken->str();
-                    if (defToken->next && defToken->next->op == '#' && defToken->next->next && defToken->next->next->op == '#' && defToken->next->next->next && defToken->next->next->next->name && sameline(defToken,defToken->next->next->next)) {
-                        TokenList temp(files);
-                        if (expandArg(temp, defToken, parametertokens))
-                            macroName = temp.cback()->str();
-                        if (expandArg(temp, defToken->next->next->next, parametertokens))
-                            macroName += temp.cback() ? temp.cback()->str() : "";
-                        else
-                            macroName += defToken->next->next->next->str();
-                        lastToken = defToken->next->next->next;
-                    }
-                    const bool def = (macros.find(macroName) != macros.end());
-                    output.push_back(newMacroToken(def ? "1" : "0", loc, true));
-                    return lastToken->next;
-                }
-            }
+            const Token *next = nullptr;
+            if (tok->str() == DEFINED && expandDefined(output, loc, tok, macros, parametertokens, next))
+                return next;
 
             output.push_back(newMacroToken(tok->str(), loc, true, tok));
             if (it != macros.end())
                 output.back()->markExpandedFrom(&it->second);
             return tok->next;
+        }
+
+        /**
+         * Expand "defined X" or "defined(X)" in the replacement list to 1 or 0.
+         * The operand can be a parameter, or two names pasted with ##.
+         * @param output          destination tokenlist
+         * @param loc             location for the result
+         * @param tok             the "defined" token
+         * @param macros          all macros
+         * @param parametertokens arguments of this macro call
+         * @param next            output: the token after the operand
+         * @return false if there is no operand, then nothing is added to output
+         */
+        bool expandDefined(TokenList &output, const Location &loc, const Token *tok, const MacroMap &macros, const std::vector<const Token*> &parametertokens, const Token *&next) const {
+            const Token * const tok2 = tok->next;
+            const Token * const tok3 = tok2 ? tok2->next : nullptr;
+            const Token * const tok4 = tok3 ? tok3->next : nullptr;
+            const Token *defToken = nullptr;
+            const Token *lastToken = nullptr;
+            if (sameline(tok, tok4) && tok2->op == '(' && tok3->name && tok4->op == ')') {
+                defToken = tok3;
+                lastToken = tok4;
+            } else if (sameline(tok,tok2) && tok2->name) {
+                defToken = lastToken = tok2;
+            }
+            if (defToken) {
+                std::string macroName = defToken->str();
+                if (defToken->next && defToken->next->op == '#' && defToken->next->next && defToken->next->next->op == '#' && defToken->next->next->next && defToken->next->next->next->name && sameline(defToken,defToken->next->next->next)) {
+                    TokenList temp(files);
+                    if (expandArg(temp, defToken, parametertokens))
+                        macroName = temp.cback()->str();
+                    if (expandArg(temp, defToken->next->next->next, parametertokens))
+                        macroName += temp.cback() ? temp.cback()->str() : "";
+                    else
+                        macroName += defToken->next->next->next->str();
+                    lastToken = defToken->next->next->next;
+                }
+                const bool def = (macros.find(macroName) != macros.end());
+                output.push_back(newMacroToken(def ? "1" : "0", loc, true));
+                next = lastToken->next;
+                return true;
+            }
+            return false;
         }
 
         bool expandArg(TokenList &output, const Token *tok, const std::vector<const Token*> &parametertokens) const {

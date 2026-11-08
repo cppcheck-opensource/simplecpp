@@ -3005,6 +3005,16 @@ static void ifDefinedHashHash2()
     ASSERT_EQUALS("\n0", preprocess(code, &outputList));
 }
 
+static void definedAtEndOfFile()
+{
+    // "defined" from a macro expansion is undefined behavior; gcc outputs "defined" here.
+    // The operand is the last token of the file.
+    const char code[] = "#define X\n"
+                        "#define D defined X\n"
+                        "D";
+    ASSERT_EQUALS("\n\n1", preprocess(code));
+}
+
 static void ifLogical()
 {
     const char code[] = "#if defined(A) || defined(B)\n"
@@ -5736,6 +5746,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifDefinedInvalid2);
     TEST_CASE(ifDefinedHashHash);
     TEST_CASE(ifDefinedHashHash2);
+    TEST_CASE(definedAtEndOfFile);
     TEST_CASE(ifLogical);
     TEST_CASE(ifLogicalPrecedence);
     TEST_CASE(ifSizeof);
