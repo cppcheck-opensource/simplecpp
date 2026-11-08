@@ -1845,6 +1845,13 @@ namespace simplecpp {
     class Macro;
     using MacroMap = std::unordered_map<TokenString,Macro>;
 
+    /** Set the location of all tokens */
+    static void setLocation(TokenList &tokens, const Location &loc)
+    {
+        for (Token *tok = tokens.front(); tok; tok = tok->next)
+            tok->location = loc;
+    }
+
     class Macro {
     public:
         explicit Macro(std::vector<std::string> &f) : nameTokDef(nullptr), valueToken(nullptr), endToken(nullptr), files(f), tokenListDefine(f), variadic(false), variadicOpt(false), valueDefinedInCode_(false) {}
@@ -2294,8 +2301,7 @@ namespace simplecpp {
                     tok = tok->next;
                 }
             }
-            for (Token *tok2 = tokens.front(); tok2; tok2 = tok2->next)
-                tok2->location = lpar->location;
+            setLocation(tokens, lpar->location);
             return sameline(lpar,tok) ? tok : nullptr;
         }
 
@@ -2750,8 +2756,7 @@ namespace simplecpp {
                 // It seems clearer to handle this case separately even though the code is similar-ish, but we don't want to merge here.
                 // TODO The question is whether the ## or varargs may still apply, and how to provoke?
                 if (expandArg(tokensB, B, parametertokens)) {
-                    for (Token *b = tokensB.front(); b; b = b->next)
-                        b->location = loc;
+                    setLocation(tokensB, loc);
                 } else {
                     tokensB.push_back(new Token(*B));
                     tokensB.back()->location = loc;
@@ -2786,8 +2791,7 @@ namespace simplecpp {
                 }
                 else if (strAB != "," && macros.find(strAB) == macros.end()) {
                     A->setstr(strAB);
-                    for (Token *b = tokensB.front(); b; b = b->next)
-                        b->location = loc;
+                    setLocation(tokensB, loc);
                     output.takeTokens(tokensB);
                 } else if (sameline(B, nextTok) && sameline(B, nextTok->next) && nextTok->op == '#' && nextTok->next->op == '#') {
                     TokenList output2(files);
@@ -2812,8 +2816,7 @@ namespace simplecpp {
                         expandToken(output, loc, tokens.cfront(), macros, expandedmacros, parametertokens, outputList);
                     else
                         output.takeTokens(tokens);
-                    for (Token *b = tokensB.front(); b; b = b->next)
-                        b->location = loc;
+                    setLocation(tokensB, loc);
                     output.takeTokens(tokensB);
                 }
             }
