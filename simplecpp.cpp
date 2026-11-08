@@ -3286,17 +3286,18 @@ namespace simplecpp {
         }
 
         /**
-         * The replacement list of the macro, with the parameters replaced by the arguments.
+         * Tokens of the replacement list of the macro, with the parameters replaced by the
+         * arguments and ## done.
          * @param result destination tokenlist
          * @param macro  the macro
          * @param call   the macro call
+         * @param begin  first token in the replacement list
+         * @param end    the token after the last one
          */
-        void substitute(TokenList &result, const Macro &macro, const MacroCall &call) const {
-            if (macro.variadicOpt)
-                throw unsupported(loc, "__VA_OPT__");
+        void substituteRange(TokenList &result, const Macro &macro, const MacroCall &call, const Token *begin, const Token *end) const {
             const Token *hashHash = nullptr;  // the ## before the current operand
             bool previousEmpty = false;       // the previous operand was empty, it is a placemarker
-            for (const Token *tok = macro.valueToken; tok != macro.endToken; tok = tok->next) {
+            for (const Token *tok = begin; tok != end; tok = tok->next) {
                 if (isHashHash(macro, tok)) {
                     if (!result.back() && !previousEmpty)
                         throw Macro::invalidHashHash(tok->location, macro.name(), "Missing first argument");
@@ -3323,6 +3324,18 @@ namespace simplecpp {
             }
             if (hashHash)
                 throw Macro::invalidHashHash::unexpectedNewline(hashHash->location, macro.name());
+        }
+
+        /**
+         * The replacement list of the macro, with the parameters replaced by the arguments.
+         * @param result destination tokenlist
+         * @param macro  the macro
+         * @param call   the macro call
+         */
+        void substitute(TokenList &result, const Macro &macro, const MacroCall &call) const {
+            if (macro.variadicOpt)
+                throw unsupported(loc, "__VA_OPT__");
+            substituteRange(result, macro, call, macro.valueToken, macro.endToken);
             for (Token *tok = result.front(); tok; tok = tok->next) {
                 tok->location = loc;
                 tok->addToHideSet(call.hideSet);
