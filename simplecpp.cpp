@@ -671,7 +671,9 @@ std::string simplecpp::TokenList::stringify(bool linenrs) const
                 ret << loc.line << ": ";
         }
 
-        if (sameline(tok->previous, tok))
+        // a # from a macro expansion at the start of a line gets a space
+        // before it, so the output is not read as a directive (as gcc and clang do)
+        if (sameline(tok->previous, tok) || (tok->op == '#' && !tok->macro.empty()))
             ret << ' ';
 
         ret << tok->str();
@@ -2950,12 +2952,12 @@ namespace simplecpp {
      * The result of an expansion is pushed back onto the input and scanned again, so a
      * function-like macro whose arguments follow the expansion in the source is found by
      * normal rescanning.
-     * Work in progress: #, ##, __VA_OPT__ and "defined" in a replacement list are not handled yet.
+     * Work in progress: ##, __VA_OPT__ and "defined" in a replacement list are not handled yet.
      */
     class HideSetExpander {
     public:
-        HideSetExpander(const MacroMap &macros, std::vector<std::string> &files)
-            : macros(macros), files(files) {}
+        HideSetExpander(const MacroMap &macros, std::vector<std::string> &files, OutputList *outputList)
+            : macros(macros), files(files), outputList(outputList) {}
 
         HideSetExpander(const HideSetExpander&) = delete;
         HideSetExpander &operator=(const HideSetExpander&) = delete;
@@ -3054,6 +3056,8 @@ namespace simplecpp {
 
                 std::set<TokenString> hideSet;
                 std::vector<TokenList> arguments;
+                std::vector<TokenList> expandedArguments;
+                bool whitespaceAfter = tok->whitespaceahead;
                 if (macro.functionLike()) {
                     TokenList call(files);
                     call.push_back(tok);
@@ -3064,7 +3068,9 @@ namespace simplecpp {
                     const std::set<TokenString> &hs1 = call.cfront()->hideSet();
                     const std::set<TokenString> &hs2 = delimiters.back()->hideSet();
                     std::set_intersection(hs1.begin(), hs1.end(), hs2.begin(), hs2.end(), std::inserter(hideSet, hideSet.begin()));
-                    arguments = expandArguments(getArguments(macro, delimiters));
+                    arguments = getArguments(macro, delimiters);
+                    expandedArguments = expandArguments(arguments);
+                    whitespaceAfter = delimiters.back()->whitespaceahead;
                 } else {
                     hideSet = tok->hideSet();
                     delete tok;
@@ -3072,7 +3078,7 @@ namespace simplecpp {
                 hideSet.insert(macro.name());
 
                 TokenList result(files);
-                substitute(result, macro, arguments, hideSet);
+                substitute(result, macro, arguments, expandedArguments, hideSet, whitespaceAfter);
                 input.pushFront(result);
             }
         }
@@ -3115,19 +3121,44 @@ namespace simplecpp {
             return expanded;
         }
 
-        /** The replacement list of the macro, with the parameters replaced by the arguments */
-        void substitute(TokenList &result, const Macro &macro, const std::vector<TokenList> &arguments, const std::set<TokenString> &hideSet) const {
+        /** The parameter number of tok in the replacement list, or ~0U if it is not a parameter */
+        static unsigned int getParameter(const Macro &macro, const Token *tok) {
+            return (tok && tok != macro.endToken && tok->name) ? macro.getArgNum(tok->str()) : ~0U;
+        }
+
+        /**
+         * The replacement list of the macro, with the parameters replaced by the arguments.
+         * @param result            destination tokenlist
+         * @param macro             the macro
+         * @param arguments         the arguments as written in the call, for #
+         * @param expandedArguments the arguments, macro expanded
+         * @param hideSet           the hide set of the result
+         * @param whitespaceAfter   there is whitespace after the macro call
+         */
+        void substitute(TokenList &result, const Macro &macro, const std::vector<TokenList> &arguments, const std::vector<TokenList> &expandedArguments, const std::set<TokenString> &hideSet, bool whitespaceAfter) const {
             if (macro.variadicOpt)
                 throw unsupported(loc, "__VA_OPT__");
             for (const Token *tok = macro.valueToken; tok != macro.endToken; tok = tok->next) {
-                if (tok->op == '#')
-                    throw unsupported(loc, "# and ##");
+                const Token * const next = (tok->next != macro.endToken) ? tok->next : nullptr;
+                if (tok->op == '#' && next && next->op == '#')
+                    throw unsupported(loc, "##");
                 if (tok->str() == DEFINED)
                     throw unsupported(loc, "defined");
-                const unsigned int argnr = tok->name ? macro.getArgNum(tok->str()) : ~0U;
-                if (argnr < arguments.size()) {
-                    for (const Token *argtok = arguments[argnr].cfront(); argtok; argtok = argtok->next)
+                // # is an operator in a function-like macro when it is followed by a parameter
+                const unsigned int hashArg = (tok->op == '#') ? getParameter(macro, next) : ~0U;
+                if (hashArg < arguments.size()) {
+                    result.push_back(new Token(stringify(arguments[hashArg], loc, macro.name(), outputList), loc, next->whitespaceahead));
+                    result.back()->macro = macro.name();
+                    tok = next;
+                    continue;
+                }
+                const unsigned int argnr = getParameter(macro, tok);
+                if (argnr < expandedArguments.size()) {
+                    for (const Token *argtok = expandedArguments[argnr].cfront(); argtok; argtok = argtok->next)
                         result.push_back(new Token(*argtok));
+                    // the whitespace after the parameter comes after the argument
+                    if (tok->whitespaceahead && result.back())
+                        result.back()->whitespaceahead = true;
                 } else {
                     result.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
                     result.back()->macro = macro.name();
@@ -3138,10 +3169,15 @@ namespace simplecpp {
                 for (const TokenString &name : hideSet)
                     tok->addToHideSet(name);
             }
+            // whitespace at the end of the replacement list does not count, the
+            // expansion is followed by the whitespace after the macro call
+            if (result.back())
+                result.back()->whitespaceahead = whitespaceAfter;
         }
 
         const MacroMap &macros;
         std::vector<std::string> &files;
+        OutputList *outputList;
         /** location of the macro name in the source, all tokens of the expansion get it */
         Location loc;
     };
@@ -4076,7 +4112,7 @@ static bool preprocessToken(simplecpp::TokenList &output, const simplecpp::Token
         simplecpp::TokenList value(files);
         try {
             if (dui.hideSetExpansion) {
-                simplecpp::HideSetExpander expander(macros, files);
+                simplecpp::HideSetExpander expander(macros, files, outputList);
                 tok1 = expander.expand(value, tok);
             } else {
                 tok1 = it->second.expand(value, tok, macros, files, outputList);
