@@ -1158,6 +1158,27 @@ static void define28()
     ASSERT_EQUALS(std::string(32, '\n') +
                   "REPEAT_INDIRECT ( ) ( 1 , M , ~ ) M ( 1 , ~ )\n"
                   "0 1 2", preprocess(code6));
+
+    // the parentheses of a call are counted after the parameters are
+    // substituted, so its '(' and its ')' can each come from a parameter. The
+    // tokens that a parameter holds after the ')' are rescanned with the
+    // tokens that follow.
+    const char code7[] = "#define LP (\n"
+                         "#define RP )\n"
+                         "#define F(x) [x]\n"
+                         "#define G(x) <x>\n"
+                         "#define A(f, x) f x 1)\n"
+                         "#define B(x) F(1 x 2)\n"
+                         "#define C(x) F(1 x (2))\n"
+                         "A(F, (LP)) B(RP) B(RP LP) C(RP G)\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "[ ( ) 1 ] [ 1 ] 2 ) [ 1 ] ( 2 ) [ 1 ] < 2 > )", preprocess(code7));
 }
 
 

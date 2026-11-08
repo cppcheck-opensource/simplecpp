@@ -2252,35 +2252,53 @@ namespace simplecpp {
 
         /** Gather the call of the function-like macro named by @p nameTok whose
          *  arguments follow the replacement-list token @p tok into @p call.
-         *  Parameters are substituted before the rescan, so parameters that expand
-         *  to nothing are skipped and the arguments can come from a parameter whose
-         *  expansion starts with '('; that expansion is copied whole since it may
-         *  hold more than the arguments. Returns the ')' from the replacement list,
-         *  the parameter that supplied the arguments, or nullptr when there is no
-         *  call. */
+         *  Parameters are substituted before the rescan, so the parentheses are
+         *  counted in the substituted tokens: parameters that expand to nothing are
+         *  skipped, and the '(' and the ')' of the call can each come from the
+         *  replacement list or from a parameter. Returns the replacement-list token
+         *  that supplied the ')', or nullptr when there is no complete call. When
+         *  that token is a parameter, its expansion is copied whole since it may
+         *  hold more than the end of the call. */
         const Token *gatherCallAfter(TokenList &call, const Token *nameTok, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, const std::vector<const Token*> &parametertokens, OutputList *outputList) const {
             TokenList callArgs(files);
-            const Token *last = nullptr;
-            for (const Token *after = tok->next; sameline(tok, after); after = after->next) {
-                if (after->op == '(') {
-                    last = appendTokens(callArgs, loc, after, macros, expandedmacros, parametertokens, outputList);
-                    break;
+            unsigned int par = 0;
+            for (const Token *after = tok->next; sameline(tok, after);) {
+                if (par > 0U && after->op == '#' && sameline(after, after->next) && (after->next->op != '#' || sameline(after, after->next->next))) {
+                    // # and ## keep the parentheses balanced
+                    if (after->next->op == '#')
+                        after = expandHashHash(callArgs, loc, after, macros, expandedmacros, parametertokens, outputList, false);
+                    else
+                        after = expandHash(callArgs, loc, after, expandedmacros, parametertokens, outputList);
+                    continue;
                 }
-                if (!expandArg(callArgs, after, loc, macros, expandedmacros, parametertokens, outputList))
-                    break;
-                // a parameter that expands to nothing is substituted before the rescan,
-                // so it does not separate the macro name from its '('
-                if (callArgs.cfront()) {
-                    if (callArgs.cfront()->op == '(')
-                        last = after;
-                    break;
+                const Token * const end = callArgs.cback();
+                if (!expandArg(callArgs, after, loc, macros, expandedmacros, parametertokens, outputList)) {
+                    // only parameters, which can expand to nothing, can come between
+                    // the macro name and its '('
+                    if (par == 0U && after->op != '(')
+                        return nullptr;
+                    callArgs.push_back(new Token(*after));
+                    if (after->macro.empty() && par > 0U)
+                        callArgs.back()->macro = name();
                 }
+                for (const Token *tok2 = end ? end->next : callArgs.cfront(); tok2; tok2 = tok2->next) {
+                    if (tok2->op == '(') {
+                        ++par;
+                    } else if (par == 0U) {
+                        // the parameter does not start with '('
+                        return nullptr;
+                    } else if (tok2->op == ')' && --par == 0U) {
+                        // the tokens of the call must be on the same line
+                        for (Token *tok3 = callArgs.front(); tok3 != tok2->next; tok3 = tok3->next)
+                            tok3->location = callArgs.cfront()->location;
+                        call.push_back(new Token(nameTok->str(), callArgs.cfront()->location));
+                        call.takeTokens(callArgs);
+                        return after;
+                    }
+                }
+                after = after->next;
             }
-            if (!last)
-                return nullptr;
-            call.push_back(new Token(nameTok->str(), callArgs.cfront()->location));
-            call.takeTokens(callArgs);
-            return last;
+            return nullptr;
         }
 
         /** Expand while the expansion result in @p temp ends with the name of a
@@ -2300,7 +2318,7 @@ namespace simplecpp {
                 output.takeTokens(temp);
                 output.deleteToken(output.back());
                 if (last->name) {
-                    // the arguments came from a parameter that may hold more than the call
+                    // the call ended in a parameter that may hold more than the call
                     temp.takeTokens(call);
                     rescanArg(temp, loc, macros, expandedmacros, outputList);
                 } else {
