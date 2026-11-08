@@ -2199,10 +2199,33 @@ namespace simplecpp {
             return ~0U;
         }
 
+        /**
+         * Find the arguments of a call of this macro.
+         * @param nameTokInst    the macro name in the call
+         * @param calledInDefine the call is in a #define, so the arguments must be on the same line
+         * @return the tokens that delimit the arguments: the '(', each ',' between two arguments and the ')'.
+         *         Empty when the macro is not function-like or the name is not followed by '('.
+         * @throws wrongNumberOfParameters if a function-like macro has the wrong number of arguments
+         */
         std::vector<const Token *> getMacroParameters(const Token *nameTokInst, bool calledInDefine) const {
-            if (!nameTokInst->next || nameTokInst->next->op != '(' || !functionLike())
+            if (!functionLike())
                 return {};
+            std::vector<const Token *> parametertokens;
+            if (nameTokInst->next && nameTokInst->next->op == '(')
+                parametertokens = findArgumentDelimiters(nameTokInst, calledInDefine);
 
+            if (variadic) {
+                if (parametertokens.size() < args.size())
+                    throw wrongNumberOfParameters(nameTokInst->location, name());
+            } else {
+                if (parametertokens.size() != args.size() + (args.empty() ? 2U : 1U))
+                    throw wrongNumberOfParameters(nameTokInst->location, name());
+            }
+            return parametertokens;
+        }
+
+        /** The '(', each ',' between two arguments and the ')' of the call. nameTokInst is followed by '('. */
+        std::vector<const Token *> findArgumentDelimiters(const Token *nameTokInst, bool calledInDefine) const {
             std::vector<const Token *> parametertokens;
             parametertokens.emplace_back(nameTokInst->next);
             unsigned int par = 0U;
@@ -2291,25 +2314,13 @@ namespace simplecpp {
             const bool calledInDefine = (loc.fileIndex != nameTokInst->location.fileIndex ||
                                          loc.line < nameTokInst->location.line);
 
-            std::vector<const Token*> parametertokens1(getMacroParameters(nameTokInst, calledInDefine));
-
-            if (functionLike()) {
-                // No arguments => not macro expansion
-                if (nameTokInst->next && nameTokInst->next->op != '(') {
-                    output.push_back(new Token(nameTokInst->str(), loc));
-                    return nameTokInst->next;
-                }
-
-                // Parse macro-call
-                if (variadic) {
-                    if (parametertokens1.size() < args.size()) {
-                        throw wrongNumberOfParameters(nameTokInst->location, name());
-                    }
-                } else {
-                    if (parametertokens1.size() != args.size() + (args.empty() ? 2U : 1U))
-                        throw wrongNumberOfParameters(nameTokInst->location, name());
-                }
+            // No arguments => not macro expansion
+            if (functionLike() && nameTokInst->next && nameTokInst->next->op != '(') {
+                output.push_back(new Token(nameTokInst->str(), loc));
+                return nameTokInst->next;
             }
+
+            std::vector<const Token*> parametertokens1(getMacroParameters(nameTokInst, calledInDefine));
 
             // If macro call uses __COUNTER__ then expand that first
             TokenList tokensparams(files);
