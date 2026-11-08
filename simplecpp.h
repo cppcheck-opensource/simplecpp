@@ -222,6 +222,12 @@ namespace simplecpp {
         void addToHideSet(const TokenString &macroName) {
             mHideSet.insert(macroName);
         }
+        const std::set<TokenString> &hideSet() const {
+            return mHideSet;
+        }
+        void setHideSet(std::set<TokenString> hideSet) {
+            mHideSet = std::move(hideSet);
+        }
 
         void printAll() const;
         void printOut() const;
@@ -277,6 +283,7 @@ namespace simplecpp {
         std::string std;
         bool clearIncludeCache{};
         bool removeComments{}; /** remove comment tokens from included files */
+        bool hideSetExpansion{}; /** use the new macro expansion with hide sets (work in progress) */
     };
 
     /** List of tokens. */

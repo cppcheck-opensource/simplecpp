@@ -27,12 +27,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <deque>
 #include <fstream>
 #include <iostream>
 #include <istream>
+#include <iterator>
 #include <limits>
 #include <list>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <stack>
@@ -1852,7 +1855,10 @@ namespace simplecpp {
             tok->location = loc;
     }
 
+    class HideSetExpander;
+
     class Macro {
+        friend class HideSetExpander;
     public:
         explicit Macro(std::vector<std::string> &f) : nameTokDef(nullptr), valueToken(nullptr), endToken(nullptr), files(f), tokenListDefine(f), variadic(false), variadicOpt(false), valueDefinedInCode_(false) {}
 
@@ -2938,6 +2944,199 @@ namespace simplecpp {
 }
 
 namespace simplecpp {
+    /**
+     * Macro expansion with hide sets (Prosser's algorithm, used by DUI::hideSetExpansion).
+     * Each token has a hide set: the macros that it must not be expanded into.
+     * The result of an expansion is pushed back onto the input and scanned again, so a
+     * function-like macro whose arguments follow the expansion in the source is found by
+     * normal rescanning.
+     * Work in progress: #, ##, __VA_OPT__ and "defined" in a replacement list are not handled yet.
+     */
+    class HideSetExpander {
+    public:
+        HideSetExpander(const MacroMap &macros, std::vector<std::string> &files)
+            : macros(macros), files(files) {}
+
+        HideSetExpander(const HideSetExpander&) = delete;
+        HideSetExpander &operator=(const HideSetExpander&) = delete;
+
+        /**
+         * Expand the macro at rawtok.
+         * @param output destination tokenlist
+         * @param rawtok the macro name in the source
+         * @return the first source token after the expansion
+         * @throws Macro::Error if the macro can not be expanded
+         */
+        const Token *expand(TokenList &output, const Token *rawtok) {
+            loc = rawtok->location;
+            Input input(rawtok->next);
+            input.pending.push_back(new Token(*rawtok));
+            expandInput(output, input);
+            return input.raw;
+        }
+
+    private:
+        /** The input of an expansion: tokens to scan again, then the source */
+        struct Input {
+            explicit Input(const Token *raw) : raw(raw) {}
+            Input(const Input&) = delete;
+            Input &operator=(const Input&) = delete;
+            ~Input() {
+                for (const Token * const tok : pending)
+                    delete tok;
+            }
+
+            /** The next token, read from the source if there are no pending tokens; nullptr at the end */
+            Token *read() {
+                if (!pending.empty()) {
+                    std::unique_ptr<Token> tok(pending.front());
+                    pending.pop_front();
+                    return tok.release();
+                }
+                if (!raw)
+                    return nullptr;
+                if (raw->op == '#' && !sameline(raw->previous, raw))
+                    throw Macro::invalidDirectiveAsMacroParameter(raw->location);
+                const Token * const tok = raw;
+                raw = raw->next;
+                return new Token(*tok);
+            }
+
+            /** The next token, without reading it */
+            const Token *peek() const {
+                return pending.empty() ? raw : pending.front();
+            }
+
+            /** Put tokens in front of the pending tokens */
+            void pushFront(TokenList &tokens) {
+                std::deque<Token *> front;
+                while (tokens.front()) {
+                    front.push_back(new Token(*tokens.front()));
+                    tokens.deleteToken(tokens.front());
+                }
+                pending.insert(pending.begin(), front.begin(), front.end());
+            }
+
+            /** tokens to scan again, the next one is at the front */
+            std::deque<Token *> pending;
+            /** next token in the source, it is only read for the arguments of a macro call */
+            const Token *raw;
+        };
+
+        static Macro::Error unsupported(const Location &loc, const std::string &what) {
+            return {loc, what + " is not supported by the hide-set expansion yet"};
+        }
+
+        /** Expand the pending tokens of the input. Source tokens are only read for macro arguments. */
+        void expandInput(TokenList &output, Input &input) {
+            while (!input.pending.empty()) {
+                Token * const tok = input.read();
+                const MacroMap::const_iterator it = tok->name ? macros.find(tok->str()) : macros.end();
+                if (it == macros.end() || tok->isInHideSet(it->first)) {
+                    output.push_back(tok);
+                    continue;
+                }
+                const Macro &macro = it->second;
+
+                if (macro.functionLike()) {
+                    const Token * const next = input.peek();
+                    if (!next || next->op != '(') {
+                        output.push_back(tok);
+                        continue;
+                    }
+                }
+
+                macro.usageList.emplace_back(loc);
+                if (macro.expandBuiltin(output, loc, tok)) {
+                    delete tok;
+                    continue;
+                }
+
+                std::set<TokenString> hideSet;
+                std::vector<TokenList> arguments;
+                if (macro.functionLike()) {
+                    TokenList call(files);
+                    call.push_back(tok);
+                    readCall(call, input);
+                    const std::vector<const Token *> delimiters = macro.getMacroParameters(call.cfront(), false);
+                    // the hide set of the name and the ) have the macro calls that this call
+                    // was produced by, the arguments are not affected by them
+                    const std::set<TokenString> &hs1 = call.cfront()->hideSet();
+                    const std::set<TokenString> &hs2 = delimiters.back()->hideSet();
+                    std::set_intersection(hs1.begin(), hs1.end(), hs2.begin(), hs2.end(), std::inserter(hideSet, hideSet.begin()));
+                    arguments = expandArguments(macro, delimiters);
+                } else {
+                    hideSet = tok->hideSet();
+                    delete tok;
+                }
+                hideSet.insert(macro.name());
+
+                TokenList result(files);
+                substitute(result, macro, arguments, hideSet);
+                input.pushFront(result);
+            }
+        }
+
+        /** Read "( ... )" after the macro name in call */
+        static void readCall(TokenList &call, Input &input) {
+            int par = 0;
+            while (Token * const tok = input.read()) {
+                call.push_back(tok);
+                if (tok->op == '(')
+                    ++par;
+                else if (tok->op == ')' && --par == 0)
+                    return;
+            }
+        }
+
+        /** Each argument of the call, fully macro expanded */
+        std::vector<TokenList> expandArguments(const Macro &macro, const std::vector<const Token *> &delimiters) {
+            std::vector<TokenList> arguments;
+            for (std::size_t i = 0; i < macro.args.size(); ++i) {
+                arguments.emplace_back(files);
+                if (i + 1U >= delimiters.size())
+                    continue; // empty variadic argument
+                Input input(nullptr);
+                for (const Token *tok = delimiters[i]->next; tok != delimiters[i + 1U]; tok = tok->next)
+                    input.pending.push_back(new Token(*tok));
+                expandInput(arguments.back(), input);
+            }
+            return arguments;
+        }
+
+        /** The replacement list of the macro, with the parameters replaced by the arguments */
+        void substitute(TokenList &result, const Macro &macro, const std::vector<TokenList> &arguments, const std::set<TokenString> &hideSet) const {
+            if (macro.variadicOpt)
+                throw unsupported(loc, "__VA_OPT__");
+            for (const Token *tok = macro.valueToken; tok != macro.endToken; tok = tok->next) {
+                if (tok->op == '#')
+                    throw unsupported(loc, "# and ##");
+                if (tok->str() == DEFINED)
+                    throw unsupported(loc, "defined");
+                const unsigned int argnr = tok->name ? macro.getArgNum(tok->str()) : ~0U;
+                if (argnr < arguments.size()) {
+                    for (const Token *argtok = arguments[argnr].cfront(); argtok; argtok = argtok->next)
+                        result.push_back(new Token(*argtok));
+                } else {
+                    result.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
+                    result.back()->macro = macro.name();
+                }
+            }
+            for (Token *tok = result.front(); tok; tok = tok->next) {
+                tok->location = loc;
+                for (const TokenString &name : hideSet)
+                    tok->addToHideSet(name);
+            }
+        }
+
+        const MacroMap &macros;
+        std::vector<std::string> &files;
+        /** location of the macro name in the source, all tokens of the expansion get it */
+        Location loc;
+    };
+}
+
+namespace simplecpp {
 
 #ifdef __CYGWIN__
     static bool startsWith(const std::string &s, const std::string &p)
@@ -3865,7 +4064,12 @@ static bool preprocessToken(simplecpp::TokenList &output, const simplecpp::Token
     if (it != macros.end()) {
         simplecpp::TokenList value(files);
         try {
-            tok1 = it->second.expand(value, tok, macros, files, outputList);
+            if (dui.hideSetExpansion) {
+                simplecpp::HideSetExpander expander(macros, files);
+                tok1 = expander.expand(value, tok);
+            } else {
+                tok1 = it->second.expand(value, tok, macros, files, outputList);
+            }
         } catch (const simplecpp::Macro::invalidDirectiveAsMacroParameter &err) {
             if (outputList) {
                 simplecpp::Output out{
