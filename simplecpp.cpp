@@ -2105,13 +2105,22 @@ namespace simplecpp {
             }
         };
     private:
-        /** Create new token where Token::macro is set for replaced tokens */
+        /**
+         * Create a new token in the expansion of this macro.
+         * @param str               the token text
+         * @param loc               the location
+         * @param replaced          Token::macro is set to the name of this macro
+         * @param expandedFromToken if not null, the new token copies its "expanded from" set and
+         *                          its whitespace, and this macro is added to the set
+         */
         Token *newMacroToken(const TokenString &str, const Location &loc, bool replaced, const Token *expandedFromToken=nullptr) const {
             auto *tok = new Token(str,loc);
             if (replaced)
                 tok->macro = nameTokDef->str();
-            if (expandedFromToken)
+            if (expandedFromToken) {
                 tok->setExpandedFrom(expandedFromToken, this);
+                tok->whitespaceahead = expandedFromToken->whitespaceahead;
+            }
             return tok;
         }
 

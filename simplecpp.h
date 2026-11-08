@@ -210,11 +210,10 @@ namespace simplecpp {
             return tok;
         }
 
+        /** Copy the "expanded from" set of tok, and add m */
         void setExpandedFrom(const Token *tok, const Macro* m) {
             mExpandedFrom = tok->mExpandedFrom;
             mExpandedFrom.insert(m);
-            if (tok->whitespaceahead)
-                whitespaceahead = true;
         }
         bool isExpandedFrom(const Macro* m) const {
             return mExpandedFrom.find(m) != mExpandedFrom.end();
