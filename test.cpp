@@ -54,6 +54,8 @@ static int numberOfHideSetTodos = 0;
 #define ASSERT_EQUALS(expected, actual)  (assertEquals((expected), (actual), __LINE__))
 #define ASSERT_THROW_EQUALS(stmt, e, expected) do { try { stmt; assertThrowFailed(__LINE__); } catch (const e& ex) { assertEquals((expected), (ex.what()), __LINE__); } } while (false)
 #define TODO_ASSERT_EQUALS(wanted, current, actual)  (todoAssertEquals((wanted), (current), (actual), __LINE__))
+/** A known bug of the old macro expansion that the hide-set expansion does not have */
+#define TODO_OLD_EXPANSION_ASSERT_EQUALS(wanted, current, actual)  (todoOldExpansionAssertEquals((wanted), (current), (actual), __LINE__))
 
 static std::string pprint(const std::string &in)
 {
@@ -109,6 +111,14 @@ static void todoAssertEquals(const std::string &wanted, const std::string &curre
         return;
     }
     assertEquals(current, actual, line);
+}
+
+static void todoOldExpansionAssertEquals(const std::string &wanted, const std::string &current, const std::string &actual, int line)
+{
+    if (USE_HIDESET_EXPANSION)
+        assertEquals(wanted, actual, line);
+    else
+        todoAssertEquals(wanted, current, actual, line);
 }
 
 static void assertThrowFailed(int line)
@@ -899,7 +909,6 @@ static void define14() // #296
 
 static void define15() // #231
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define CAT(a, b) CAT2(a, b)\n"
                         "#define CAT2(a, b) a ## b\n"
                         "#define FOO x\n"
@@ -952,7 +961,6 @@ static void define16() // #201
 
 static void define17() // #185
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define at(x, y) x##y\n"
                         "#define b(...) \\\n"
                         "aa(__VA_ARGS__, , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , \\\n"
@@ -981,7 +989,6 @@ static void define17() // #185
 
 static void define18() // #130
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define MAC2STR(x) x[0],x[1],x[2],x[3],x[4],x[5]\n"
                         "#define FT_DEBUG(fmt, args...) if(pGlobalCtx && pGlobalCtx->debug_level>=2) printf(\"FT-dbg: \"fmt, ##args)\n"
                         "\n"
@@ -994,7 +1001,6 @@ static void define18() // #130
 
 static void define19() // #124
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define CONCAT(tok) tok##suffix\n"
                         "\n"
                         "CONCAT(Test);\n"
@@ -1019,7 +1025,6 @@ static void define20() // #113
 
 static void define21() // #66
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define GETMYID(a) ((a))+1\n"
                         "#define FIGHT_FOO(c, ...) foo(c, ##__VA_ARGS__)\n"
                         "FIGHT_FOO(1, GETMYID(a));\n";
@@ -1030,7 +1035,6 @@ static void define21() // #66
 
 static void define22() // #40
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define COUNTER_NAME(NAME, ...) NAME##Count\n"
                         "#define COMMA ,\n"
                         "\n"
@@ -1178,15 +1182,10 @@ static void define_invalid_3()
     const char code[] = "#define R()\n"
                         "R\n";
     simplecpp::OutputList outputList;
-    // a function-like macro name at the end of the file is not a macro call, gcc outputs R
-    if (USE_HIDESET_EXPANSION) {
-        ASSERT_EQUALS("\nR", preprocess(code, &outputList));
-        ASSERT_EQUALS("", toString(outputList));
-    } else {
-        // TODO: the old macro expansion reports an error
-        TODO_ASSERT_EQUALS("\nR", "", preprocess(code, &outputList));
-        TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
-    }
+    // a function-like macro name at the end of the file is not a macro call, gcc outputs R.
+    // TODO: the old macro expansion reports an error
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\nR", "", preprocess(code, &outputList));
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
 }
 
 static void define_wrong_number_of_arguments()
@@ -1230,15 +1229,10 @@ static void define_invalid_4()
     const char code[] = "#define X(...)\n"
                         "X\n";
     simplecpp::OutputList outputList;
-    // a function-like macro name at the end of the file is not a macro call, gcc outputs X
-    if (USE_HIDESET_EXPANSION) {
-        ASSERT_EQUALS("\nX", preprocess(code, &outputList));
-        ASSERT_EQUALS("", toString(outputList));
-    } else {
-        // TODO: the old macro expansion reports an error
-        TODO_ASSERT_EQUALS("\nX", "", preprocess(code, &outputList));
-        TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'X', Wrong number of parameters for macro 'X'.\n", toString(outputList));
-    }
+    // a function-like macro name at the end of the file is not a macro call, gcc outputs X.
+    // TODO: the old macro expansion reports an error
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\nX", "", preprocess(code, &outputList));
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'X', Wrong number of parameters for macro 'X'.\n", toString(outputList));
 }
 
 static void define_define_1()
@@ -1259,7 +1253,6 @@ static void define_define_2()
 
 static void define_define_3()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define ABC 123\n"
                         "#define A(B) A##B\n"
                         "A(BC)";
@@ -1323,7 +1316,6 @@ static void define_define_9()   // line break in nested macro call
 
 static void define_define_10()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define glue(a, b) a ## b\n"
                         "#define xglue(a, b) glue(a, b)\n"
                         "#define AB 1\n"
@@ -1334,7 +1326,6 @@ static void define_define_10()
 
 static void define_define_11()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define XY(x, y)   x ## y\n"
                         "#define XY2(x, y)  XY(x, y)\n"
                         "#define PORT       XY2(P, 2)\n"
@@ -1345,7 +1336,6 @@ static void define_define_11()
 
 static void define_define_11a()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define A_B_C              0x1\n"
                         "#define A_ADDRESS          0x00001000U\n"
                         "#define A                  ((uint32_t ) A_ADDRESS)\n"
@@ -1364,7 +1354,6 @@ static void define_define_11a()
 
 static void define_define_12()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define XY(Z)  Z\n"
                         "#define X(ID)  X##ID(0)\n"
                         "X(Y)\n";
@@ -1400,7 +1389,6 @@ static void define_define_15() // issue #72 without __VA_ARGS__
 
 static void define_define_16() // issue #72 with __VA_ARGS__
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define ab(a, b)  a##b\n"
                         "#define foo(...) ab(f, 2) (__VA_ARGS__)\n"
                         "#define f2(x, y) x y\n"
@@ -1436,7 +1424,6 @@ static void define_define_19() // #292
 
 static void define_define_20() // #384 arg contains comma
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define Z_IS_ENABLED1(config_macro) Z_IS_ENABLED2(_XXXX##config_macro)\n"
                         "#define _XXXX1 _YYYY,\n"
                         "#define Z_IS_ENABLED2(one_or_two_args) Z_IS_ENABLED3(one_or_two_args 1, 0)\n"
@@ -1469,7 +1456,6 @@ static void define_define_21() // #397 DEBRACKET macro
 
 static void define_define_22() // #400 inner macro not expanded after hash hash
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define FOO(a) CAT(DO, STUFF)(1,2)\n"
                         "#define DOSTUFF(a, b)  CAT(3, 4)\n"
                         "#define CAT(a, b) a##b\n"
@@ -1479,7 +1465,6 @@ static void define_define_22() // #400 inner macro not expanded after hash hash
 
 static void define_define_23() // #403 crash (infinite recursion)
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define C_(x, y)       x ## y\n"
                         "#define C(x, y)        C_(x, y)\n"
                         "#define X(func)        C(Y, C(func, Z))\n"
@@ -1829,7 +1814,6 @@ static void error8()
 
 static void garbage()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     simplecpp::OutputList outputList;
 
     outputList.clear();
@@ -2029,7 +2013,6 @@ static void hashEscapeTrailingBackslash()
 
 static void hashhash1()   // #4703
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define MACRO( A, B, C ) class A##B##C##Creator {};\n"
                         "MACRO( B\t, U , G )";
     ASSERT_EQUALS("\nclass BUGCreator { } ;", preprocess(code));
@@ -2037,7 +2020,6 @@ static void hashhash1()   // #4703
 
 static void hashhash2()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define A(x) a##x\n"
                         "#define B 0\n"
                         "A(B)";
@@ -2046,7 +2028,6 @@ static void hashhash2()
 
 static void hashhash3()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define A(B) A##B\n"
                         "#define a(B) A(B)\n"
                         "a(A(B))";
@@ -2055,7 +2036,6 @@ static void hashhash3()
 
 static void hashhash4()    // nonstandard gcc/clang extension for empty varargs
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char *code;
 
     code = "#define A(x,y...)  a(x,##y)\n"
@@ -2070,7 +2050,6 @@ static void hashhash4()    // nonstandard gcc/clang extension for empty varargs
 
 static void hashhash4a()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define GETMYID(a) ((a))+1\n"
                         "#define FIGHT_FOO(c, ...) foo(c, ##__VA_ARGS__)\n"
                         "#define FIGHT_BAR(c, args...) bar(c, ##args)\n"
@@ -2086,7 +2065,6 @@ static void hashhash5()
 
 static void hashhash6()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char *code;
 
     code = "#define A(X, ...) LOG(X, ##__VA_ARGS__)\n"
@@ -2102,7 +2080,6 @@ static void hashhash6()
 
 static void hashhash7()   // # ## #  (C standard; 6.10.3.3.p4)
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char *code;
 
     code = "#define hash_hash # ## #\n"
@@ -2112,7 +2089,6 @@ static void hashhash7()   // # ## #  (C standard; 6.10.3.3.p4)
 
 static void hashhash8()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define a(xy)    x##y = xy\n"
                         "a(123);";
     ASSERT_EQUALS("\nxy = 123 ;", preprocess(code));
@@ -2120,7 +2096,6 @@ static void hashhash8()
 
 static void hashhash9()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char * code = "#define ADD_OPERATOR(OP) void operator OP ## = (void) { x = x OP 1; }\n"
                         "ADD_OPERATOR(+);\n"
                         "ADD_OPERATOR(-);\n"
@@ -2168,11 +2143,11 @@ static void hashhash9()
 
 static void hashhash10()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define x # #\n"
                         "x";
-    // a space is added before the #, as gcc and clang do, so the output is not read as a directive
-    ASSERT_EQUALS(" # #", preprocess(code));
+    // a space is added before the #, as gcc and clang do, so the output is not read as a directive.
+    // TODO: the old macro expansion gives the tokens the location of the #define
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n # #", " # #", preprocess(code));
 }
 
 static void hashFromMacroAtLineStart()
@@ -2180,23 +2155,20 @@ static void hashFromMacroAtLineStart()
     // clang testsuite hash_space.c: a space before the # so that the output is not read as a directive
     const char code[] = "#define HASH #\n"
                         "HASH define foo bar\n";
-    if (USE_HIDESET_EXPANSION)
-        ASSERT_EQUALS("\n # define foo bar", preprocess(code));
-    else // TODO: the old macro expansion gives the # the location of the #define
-        TODO_ASSERT_EQUALS("\n # define foo bar", " #\ndefine foo bar", preprocess(code));
+    // TODO: the old macro expansion gives the # the location of the #define
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n # define foo bar", " #\ndefine foo bar", preprocess(code));
 }
 
 static void hashhash11()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define x # # #\n"
                         "x";
-    ASSERT_EQUALS(" # # #", preprocess(code));
+    // TODO: the old macro expansion gives the tokens the location of the #define
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n # # #", " # # #", preprocess(code));
 }
 
 static void hashhash12()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     {
         const char code[] = "#define MAX_FOO 1\n"
                             "#define MAX_FOO_AA 2\n"
@@ -2234,7 +2206,6 @@ static void hashhash12()
 
 static void hashhash13()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define X(x) x##U\n"
                         "X((1<<1)-1)";
     ASSERT_EQUALS("\n( 1 << 1 ) - 1U", preprocess(code));
@@ -2246,7 +2217,6 @@ static void hashhash13()
 
 static void hashhash_string_literal()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define UL(x) x##_ul\n"
         "\"ABC\"_ul;\n"
@@ -2257,7 +2227,6 @@ static void hashhash_string_literal()
 
 static void hashhash_string_wrapped()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CONCAT(a,b) a##b\n"
         "#define STR(x) CONCAT(x,s)\n"
@@ -2268,7 +2237,6 @@ static void hashhash_string_wrapped()
 
 static void hashhash_char_literal()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CH(x) x##_ch\n"
         "CH('a');";
@@ -2278,7 +2246,6 @@ static void hashhash_char_literal()
 
 static void hashhash_multichar_literal()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CH(x) x##_ch\n"
         "CH('abcd');";
@@ -2288,7 +2255,6 @@ static void hashhash_multichar_literal()
 
 static void hashhash_char_escaped()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CH(x) x##_ch\n"
         "CH('\\'');";
@@ -2298,7 +2264,6 @@ static void hashhash_char_escaped()
 
 static void hashhash_string_nothing()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CONCAT(a,b) a##b\n"
         "CONCAT(\"ABC\",);";
@@ -2308,7 +2273,6 @@ static void hashhash_string_nothing()
 
 static void hashhash_string_char()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CONCAT(a,b) a##b\n"
         "CONCAT(\"ABC\", 'c');";
@@ -2319,7 +2283,6 @@ static void hashhash_string_char()
 
 static void hashhash_string_name()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CONCAT(a,b) a##b\n"
         "#define LIT _literal\n"
@@ -2328,12 +2291,13 @@ static void hashhash_string_name()
     // TODO is this correct? clang fails because that's not really a valid thing but gcc seems to accept it
     // see https://gist.github.com/patrickdowling/877a25294f069bf059f3b07f9b5b7039
 
-    ASSERT_EQUALS("\n\n\"string\" LIT ;", preprocess(code));
+    // "string" and LIT are not pasted, so the result is rescanned and LIT is expanded.
+    // TODO: the old macro expansion does not rescan LIT
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n\n\"string\" _literal ;", "\n\n\"string\" LIT ;", preprocess(code));
 }
 
 static void hashhashhash_int_literal()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define CONCAT(a,b,c) a##b##c\n"
         "#define PASTER(a,b,c) CONCAT(a,b,c)\n"
@@ -2344,7 +2308,6 @@ static void hashhashhash_int_literal()
 
 static void hashhash_int_literal()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define PASTE(a,b) a##b\n"
         "PASTE(123,_i);\n"
@@ -2355,7 +2318,6 @@ static void hashhash_int_literal()
 
 static void hashhash_invalid_1()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define  f(a)  (##x)\nf(1)\n";
     simplecpp::OutputList outputList;
     ASSERT_EQUALS("", preprocess(code, &outputList));
@@ -2364,7 +2326,6 @@ static void hashhash_invalid_1()
 
 static void hashhash_invalid_2()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] = "#define  f(a)  (x##)\nf(1)\n";
     simplecpp::OutputList outputList;
     ASSERT_EQUALS("", preprocess(code, &outputList));
@@ -2373,7 +2334,6 @@ static void hashhash_invalid_2()
 
 static void hashhash_invalid_string_number()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define BAD(x) x##12345\nBAD(\"ABC\")\n";
 
@@ -2384,7 +2344,6 @@ static void hashhash_invalid_string_number()
 
 static void hashhash_invalid_missing_args()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define BAD(x) ##x\nBAD()\n";
 
@@ -2395,7 +2354,6 @@ static void hashhash_invalid_missing_args()
 
 static void hashhash_null_stmt()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "# define B(x) C ## x\n"
         "#\n"
@@ -2408,7 +2366,6 @@ static void hashhash_null_stmt()
 
 static void hashhash_empty_va_args()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     // #395 hash hash with an empty __VA_ARGS__ in a macro
     const char code[] =
         "#define CAT(a, ...)        a##__VA_ARGS__\n"
@@ -2420,7 +2377,6 @@ static void hashhash_empty_va_args()
 
 static void hashhash_punctuator() // #724
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define cat(a,b) a##b\n"
         "#define MINUS_GT -##>\n"
@@ -2433,7 +2389,6 @@ static void hashhash_punctuator() // #724
 
 static void hashhash_punctuator_invalid()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define cat(a,b) a##b\n"
         "cat(+,x)\n";
@@ -2444,7 +2399,6 @@ static void hashhash_punctuator_invalid()
 
 static void macro_c11_example3() // C11 6.10.3.5 EXAMPLE 3
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define x 3\n"
         "#define f(a) f(x * (a))\n"
@@ -2465,51 +2419,50 @@ static void macro_c11_example3() // C11 6.10.3.5 EXAMPLE 3
         "(f)^m(m);\n"
         "p() i[q()] = { q(1), r(2,3), r(4,), r(,5), r(,) };\n"
         "char c[2][6] = { str(hello), str() };\n";
-    // TODO: r(,) leaves an empty token
-    TODO_ASSERT_EQUALS("\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
-                       "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
-                       "^ m ( 0 , 1 ) ;\n"
-                       "int i [ ] = { 1 , 23 , 4 , 5 , } ;\n"
-                       "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
-                       "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
-                       "^ m ( 0 , 1 ) ;\n"
-                       "int i [ ] = { 1 , 23 , 4 , 5 ,  } ;\n"
-                       "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
-                       preprocess(code));
+    // TODO: the old macro expansion leaves an empty token for r(,)
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
+                                     "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
+                                     "^ m ( 0 , 1 ) ;\n"
+                                     "int i [ ] = { 1 , 23 , 4 , 5 , } ;\n"
+                                     "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "\n"
+                                     "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
+                                     "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
+                                     "^ m ( 0 , 1 ) ;\n"
+                                     "int i [ ] = { 1 , 23 , 4 , 5 ,  } ;\n"
+                                     "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
+                                     preprocess(code));
 }
 
 static void macro_c11_example4() // C11 6.10.3.5 EXAMPLE 4
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define str(s) # s\n"
         "#define xstr(s) str(s)\n"
@@ -2549,19 +2502,18 @@ static void macro_c11_example4() // C11 6.10.3.5 EXAMPLE 4
 
 static void macro_c11_example5() // C11 6.10.3.5 EXAMPLE 5
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define t(x,y,z) x ## y ## z\n"
         "int j[] = { t(1,2,3), t(,4,5), t(6,,7), t(8,9,),\n"
         " t(10,,), t(,11,), t(,,12), t(,,) };\n";
-    // TODO: t(,,) leaves an empty token
-    TODO_ASSERT_EQUALS("\n"
-                       "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
-                       "10 , 11 , 12 , } ;",
-                       "\n"
-                       "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
-                       "10 , 11 , 12 ,  } ;",
-                       preprocess(code));
+    // TODO: the old macro expansion leaves an empty token for t(,,)
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n"
+                                     "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
+                                     "10 , 11 , 12 , } ;",
+                                     "\n"
+                                     "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
+                                     "10 , 11 , 12 ,  } ;",
+                                     preprocess(code));
 }
 
 static void macro_c11_example7() // C11 6.10.3.5 EXAMPLE 7
@@ -2619,7 +2571,6 @@ static void macro_c23_va_opt_examples() // C23 6.10.5.1 EXAMPLE
 
 static void hashhash_empty_placemarker()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define r(x,y) x ## y\n"
         "{ r(,) }\n";
@@ -2631,13 +2582,12 @@ static void hashhash_empty_placemarker()
     std::string str;
     for (const simplecpp::Token *tok = tokens.cfront(); tok; tok = tok->next)
         str += "[" + tok->str() + "]";
-    // TODO: pasting two empty arguments gives an empty token
-    TODO_ASSERT_EQUALS("[{][}]", "[{][][}]", str);
+    // TODO: with the old macro expansion, pasting two empty arguments gives an empty token
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("[{][}]", "[{][][}]", str);
 }
 
 static void hashhash_invalid_dotdot()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define cat(a,b) a##b\n"
         "cat(.,.)\n";
@@ -2648,7 +2598,6 @@ static void hashhash_invalid_dotdot()
 
 static void hashhash_invalid_name_string()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define cat(a,b) a##b\n"
         "cat(a,\"s\")\n";
@@ -2659,7 +2608,6 @@ static void hashhash_invalid_name_string()
 
 static void hashhash_invalid_number_string()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define cat(a,b) a##b\n"
         "cat(1,\"s\")\n";
@@ -2670,7 +2618,6 @@ static void hashhash_invalid_number_string()
 
 static void hashhash_encoding_prefix()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define cat(a,b) a##b\n"
         "#define WIDE(s) L ## s\n"
@@ -2682,7 +2629,6 @@ static void hashhash_encoding_prefix()
 
 static void hashhash_va_args_unexpected()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define C(...)!##__VA_ARGS__\n"
         "C(1)\n";
@@ -2693,7 +2639,6 @@ static void hashhash_va_args_unexpected()
 
 static void hashhash_universal_character()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define A(x,y) x##y\nint A(\\u01,04);\n";
     simplecpp::OutputList outputList;
@@ -2703,7 +2648,6 @@ static void hashhash_universal_character()
 
 static void hashhash_universal_character_2()
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code[] =
         "#define A(x,y) x##y\nint A(\\U0104, 0104);\n";
     simplecpp::OutputList outputList;
@@ -3094,7 +3038,7 @@ static void ifDefinedInvalid2()
 
 static void ifDefinedHashHash()
 {
-    HIDESET_EXPANSION_TODO(); // ##
+    HIDESET_EXPANSION_TODO(); // defined in a replacement list
     const char code[] = "#define ENABLE(FEATURE)  defined ENABLE_##FEATURE\n"
                         "#define ENABLE_FOO 1\n"
                         "#if ENABLE(FOO)\n"
@@ -3109,7 +3053,7 @@ static void ifDefinedHashHash()
 
 static void ifDefinedHashHash2()
 {
-    HIDESET_EXPANSION_TODO(); // ##
+    HIDESET_EXPANSION_TODO(); // defined in a replacement list
     // #409
     // do not crash when expanding P()  (as ## rhs is "null")
     // note: gcc outputs "defined E"
@@ -4192,7 +4136,6 @@ static void include2()
 
 static void include3()   // #16 - crash when expanding macro from header
 {
-    HIDESET_EXPANSION_TODO(); // ##
     const char code_c[] = "#include \"A.h\"\n"
                           "glue(1,2,3,4)\n";
     const char code_h[] = "#define glue(a,b,c,d) a##b##c##d\n";
@@ -4831,7 +4774,7 @@ static void tokenMacro9()
 
 static void tokenMacro10()
 {
-    HIDESET_EXPANSION_TODO(); // ##
+    HIDESET_EXPANSION_TODO(); // Token::macro and location rules
     // the results of # and ## have no macro name
     const char code[] = "#define str(x) #x\n"
                         "#define cat(a,b) a##b\n"
@@ -4966,13 +4909,12 @@ static void hideSetExpansion_arg_self()
 {
     const char code[] = "#define f(x) x\n"
                         "f(f)(1)\n";
-    if (USE_HIDESET_EXPANSION)
-        ASSERT_EQUALS("\n"
-                      "f ( 1 )", preprocess(code));
-    else // TODO: the old macro expansion is wrong
-        TODO_ASSERT_EQUALS("\n"
-                           "f ( 1 )", "\n"
-                           "1", preprocess(code));
+    // TODO: the old macro expansion is wrong
+    TODO_OLD_EXPANSION_ASSERT_EQUALS("\n"
+                                     "f ( 1 )",
+                                     "\n"
+                                     "1",
+                                     preprocess(code));
 }
 
 static void hideSetExpansion_blue_in_arg()

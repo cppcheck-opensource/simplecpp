@@ -2952,7 +2952,7 @@ namespace simplecpp {
      * The result of an expansion is pushed back onto the input and scanned again, so a
      * function-like macro whose arguments follow the expansion in the source is found by
      * normal rescanning.
-     * Work in progress: ##, __VA_OPT__ and "defined" in a replacement list are not handled yet.
+     * Work in progress: __VA_OPT__ and "defined" in a replacement list are not handled yet.
      */
     class HideSetExpander {
     public:
@@ -3126,6 +3126,57 @@ namespace simplecpp {
             return (tok && tok != macro.endToken && tok->name) ? macro.getArgNum(tok->str()) : ~0U;
         }
 
+        /** tok and the token after it are ## in the replacement list of macro */
+        static bool isHashHash(const Macro &macro, const Token *tok) {
+            if (!tok || tok == macro.endToken || tok->op != '#')
+                return false;
+            const Token * const next = tok->next;
+            return next && next != macro.endToken && next->op == '#' &&
+                   sameline(tok, next) && next->location.col == tok->location.col + 1U;
+        }
+
+        /**
+         * A ## B: paste the last token of result with the first token of operand.
+         * An empty operand is a placemarker: pasting it gives the other operand.
+         * @param result        the replacement so far, it ends with A
+         * @param operand       B, its tokens are moved to result
+         * @param previousEmpty A is a placemarker
+         * @param macro         the macro
+         * @param hashHash      the ## in the replacement list
+         * @param operandTok    the token after ## in the replacement list
+         * @throws invalidHashHash if the result is not a valid token
+         */
+        static void paste(TokenList &result, TokenList &operand, bool previousEmpty, const Macro &macro, const Token *hashHash, const Token *operandTok) {
+            Token * const A = result.back();
+            const bool varargs = macro.variadic && !macro.args.empty() && operandTok->str() == macro.args.back();
+            if (operand.empty()) {
+                // gcc extension: in ", ## __VA_ARGS__" the comma is removed when there are no variable arguments
+                if (varargs && A && !previousEmpty && A->op == ',')
+                    result.deleteToken(A);
+                return;
+            }
+            if (previousEmpty || !A) {
+                result.takeTokens(operand);
+                return;
+            }
+            Macro::checkHashHashOperands(hashHash->location, macro.name(), A, operandTok);
+            // ", ## __VA_ARGS__" with variable arguments: nothing is pasted
+            // a string or character literal followed by a name (user-defined literal) is not pasted either
+            if ((varargs && A->op == ',') || isStringLiteral(A->str()) || isCharLiteral(A->str())) {
+                result.takeTokens(operand);
+                return;
+            }
+            const Token * const B = operand.cfront();
+            Macro::checkPaste(hashHash->location, macro.name(), A, B);
+            const std::string strAB = A->str() + B->str();
+            Macro::checkUniversalCharacterPaste(hashHash->location, macro.name(), A, strAB);
+            A->setstr(strAB);
+            A->whitespaceahead = B->whitespaceahead;
+            A->macro = macro.name();
+            operand.deleteToken(operand.front());
+            result.takeTokens(operand);
+        }
+
         /**
          * The tokens that a token in the replacement list is replaced by: a parameter by its
          * argument, # and a parameter by a string literal, and other tokens by a copy.
@@ -3169,20 +3220,37 @@ namespace simplecpp {
         void substitute(TokenList &result, const Macro &macro, const std::vector<TokenList> &arguments, const std::vector<TokenList> &expandedArguments, const std::set<TokenString> &hideSet, bool whitespaceAfter) const {
             if (macro.variadicOpt)
                 throw unsupported(loc, "__VA_OPT__");
+            const Token *hashHash = nullptr;  // the ## before the current operand
+            bool previousEmpty = false;       // the previous operand was empty, it is a placemarker
             for (const Token *tok = macro.valueToken; tok != macro.endToken; tok = tok->next) {
-                const Token * const next = (tok->next != macro.endToken) ? tok->next : nullptr;
-                if (tok->op == '#' && next && next->op == '#')
-                    throw unsupported(loc, "##");
+                if (isHashHash(macro, tok)) {
+                    if (!result.back() && !previousEmpty)
+                        throw Macro::invalidHashHash(tok->location, macro.name(), "Missing first argument");
+                    hashHash = tok;
+                    tok = tok->next;
+                    continue;
+                }
                 if (tok->str() == DEFINED)
                     throw unsupported(loc, "defined");
+                const Token * const operandTok = tok;
                 const bool parameter = getParameter(macro, tok) < arguments.size();
+                // an argument is not expanded when it is an operand of ##
+                const bool expand = !hashHash && !isHashHash(macro, tok->next);
                 TokenList operand(files);
-                getOperand(operand, macro, tok, arguments, expandedArguments, true);
-                result.takeTokens(operand);
+                getOperand(operand, macro, tok, arguments, expandedArguments, expand);
+                const bool empty = operand.empty();
+                if (hashHash)
+                    paste(result, operand, previousEmpty, macro, hashHash, operandTok);
+                else
+                    result.takeTokens(operand);
                 // the whitespace after a parameter comes after its argument
                 if (parameter && tok->whitespaceahead && result.back())
                     result.back()->whitespaceahead = true;
+                previousEmpty = empty && (hashHash ? previousEmpty : true);
+                hashHash = nullptr;
             }
+            if (hashHash)
+                throw Macro::invalidHashHash::unexpectedNewline(hashHash->location, macro.name());
             for (Token *tok = result.front(); tok; tok = tok->next) {
                 tok->location = loc;
                 for (const TokenString &name : hideSet)
