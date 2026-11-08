@@ -222,6 +222,9 @@ namespace simplecpp {
         void addToHideSet(const TokenString &macroName) {
             mHideSet.insert(macroName);
         }
+        void addToHideSet(const std::set<TokenString> &hideSet) {
+            mHideSet.insert(hideSet.cbegin(), hideSet.cend());
+        }
         const std::set<TokenString> &hideSet() const {
             return mHideSet;
         }

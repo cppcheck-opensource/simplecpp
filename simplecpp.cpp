@@ -3275,8 +3275,7 @@ namespace simplecpp {
                 throw Macro::invalidHashHash::unexpectedNewline(hashHash->location, macro.name());
             for (Token *tok = result.front(); tok; tok = tok->next) {
                 tok->location = loc;
-                for (const TokenString &name : call.hideSet)
-                    tok->addToHideSet(name);
+                tok->addToHideSet(call.hideSet);
             }
             // whitespace at the end of the replacement list does not count, the
             // expansion is followed by the whitespace after the macro call
