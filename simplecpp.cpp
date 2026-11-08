@@ -3269,49 +3269,74 @@ namespace simplecpp {
         }
 
         /**
-         * The tokens that a token in the replacement list is replaced by: a parameter by its
-         * argument, # and a parameter by a string literal, "defined X" by 1 or 0, and other tokens by a copy.
-         * @param operand           destination tokenlist
-         * @param macro             the macro
-         * @param tok               the token in the replacement list; for # it is moved to the parameter
-         * @param call              the macro call
-         * @param expand            use the expanded argument for a parameter
+         * "defined X" in the replacement list is replaced by 1 or 0.
+         * @param operand destination tokenlist
+         * @param macro   the macro
+         * @param tok     the token in the replacement list; for "defined X" it is moved to the last token of X
+         * @param call    the macro call
+         * @return true if tok is "defined" with an operand
          */
-        void getOperand(TokenList &operand, const Macro &macro, const Token *&tok, const MacroCall &call, bool expand) const {
-            // "defined X" is replaced by 1 or 0
+        bool getDefined(TokenList &operand, const Macro &macro, const Token *&tok, const MacroCall &call) const {
             const Token *first;
             const Token *second;
             const Token *last;
-            if (tok->str() == DEFINED && Macro::findDefinedOperand(tok, first, second, last)) {
-                const std::string macroName = Macro::definedMacroName(first, second, [&](const Token *argtok, std::string &text) {
-                    const unsigned int argnr = getParameter(macro, argtok);
-                    if (argnr >= call.arguments.size())
-                        return false;
-                    text = call.arguments[argnr].cback() ? call.arguments[argnr].cback()->str() : "";
-                    return true;
-                });
-                operand.push_back(newToken((macros.find(macroName) != macros.end()) ? "1" : "0", macro, last->whitespaceahead));
-                tok = last;
-                return;
-            }
-            if (isVaOpt(macro, tok)) {
-                getVaOpt(operand, macro, tok, call);
-                return;
-            }
+            if (tok->str() != DEFINED || !Macro::findDefinedOperand(tok, first, second, last))
+                return false;
+            const std::string macroName = Macro::definedMacroName(first, second, [&](const Token *argtok, std::string &text) {
+                const unsigned int argnr = getParameter(macro, argtok);
+                if (argnr >= call.arguments.size())
+                    return false;
+                text = call.arguments[argnr].cback() ? call.arguments[argnr].cback()->str() : "";
+                return true;
+            });
+            operand.push_back(newToken((macros.find(macroName) != macros.end()) ? "1" : "0", macro, last->whitespaceahead));
+            tok = last;
+            return true;
+        }
+
+        /**
+         * # followed by a parameter or by __VA_OPT__(content) is replaced by a string literal.
+         * # is only an operator in a function-like macro.
+         * @param operand destination tokenlist
+         * @param macro   the macro
+         * @param tok     the token in the replacement list; for # it is moved to the last token of the operand
+         * @param call    the macro call
+         * @return true if tok is the # operator
+         */
+        bool getStringified(TokenList &operand, const Macro &macro, const Token *&tok, const MacroCall &call) const {
+            if (tok->op != '#')
+                return false;
             const Token * const next = (tok->next != macro.endToken) ? tok->next : nullptr;
-            if (tok->op == '#' && isVaOpt(macro, next)) {
-                // #__VA_OPT__(content): the content as a string literal
+            if (isVaOpt(macro, next)) {
                 tok = next;
                 TokenList content(files);
                 getVaOpt(content, macro, tok, call);
                 operand.push_back(newToken(stringify(content, loc, macro.name(), outputList), macro, tok->whitespaceahead));
-                return;
+                return true;
             }
-            // # is an operator in a function-like macro when it is followed by a parameter
-            const unsigned int hashArg = (tok->op == '#') ? getParameter(macro, next) : ~0U;
-            if (hashArg < call.arguments.size()) {
-                operand.push_back(newToken(stringify(call.arguments[hashArg], loc, macro.name(), outputList), macro, next->whitespaceahead));
-                tok = next;
+            const unsigned int argnr = getParameter(macro, next);
+            if (argnr >= call.arguments.size())
+                return false;
+            operand.push_back(newToken(stringify(call.arguments[argnr], loc, macro.name(), outputList), macro, next->whitespaceahead));
+            tok = next;
+            return true;
+        }
+
+        /**
+         * The tokens that a token in the replacement list is replaced by: a parameter by its
+         * argument, # and a parameter by a string literal, "defined X" by 1 or 0,
+         * __VA_OPT__(content) by its content or nothing, and other tokens by a copy.
+         * @param operand destination tokenlist
+         * @param macro   the macro
+         * @param tok     the token in the replacement list; it is moved to the last token that is used
+         * @param call    the macro call
+         * @param expand  use the expanded argument for a parameter
+         */
+        void getOperand(TokenList &operand, const Macro &macro, const Token *&tok, const MacroCall &call, bool expand) const {
+            if (getDefined(operand, macro, tok, call) || getStringified(operand, macro, tok, call))
+                return;
+            if (isVaOpt(macro, tok)) {
+                getVaOpt(operand, macro, tok, call);
                 return;
             }
             const unsigned int argnr = getParameter(macro, tok);
