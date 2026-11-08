@@ -165,7 +165,7 @@ namespace simplecpp {
         }
 
         Token(const Token &tok) :
-            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), string(tok.string), mExpandedFrom(tok.mExpandedFrom) {}
+            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), string(tok.string), mHideSet(tok.mHideSet) {}
 
         Token &operator=(const Token &tok) = delete;
 
@@ -210,16 +210,19 @@ namespace simplecpp {
             return tok;
         }
 
-        /** Copy the "expanded from" set of tok, and add m */
-        void setExpandedFrom(const Token *tok, const Macro* m) {
-            mExpandedFrom = tok->mExpandedFrom;
-            mExpandedFrom.insert(m);
+        /**
+         * The hide set holds the macros that this token must not be expanded into.
+         * Set it to the hide set of tok, with m added.
+         */
+        void setHideSet(const Token *tok, const Macro* m) {
+            mHideSet = tok->mHideSet;
+            mHideSet.insert(m);
         }
-        bool isExpandedFrom(const Macro* m) const {
-            return mExpandedFrom.find(m) != mExpandedFrom.end();
+        bool isInHideSet(const Macro* m) const {
+            return mHideSet.find(m) != mHideSet.end();
         }
-        void markExpandedFrom(const Macro* m) {
-            mExpandedFrom.insert(m);
+        void addToHideSet(const Macro* m) {
+            mHideSet.insert(m);
         }
 
         void printAll() const;
@@ -235,7 +238,7 @@ namespace simplecpp {
 
         TokenString string;
 
-        std::set<const Macro*> mExpandedFrom;
+        std::set<const Macro*> mHideSet;
     };
 
     /** Output from preprocessor */
