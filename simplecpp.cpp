@@ -3064,7 +3064,7 @@ namespace simplecpp {
                     const std::set<TokenString> &hs1 = call.cfront()->hideSet();
                     const std::set<TokenString> &hs2 = delimiters.back()->hideSet();
                     std::set_intersection(hs1.begin(), hs1.end(), hs2.begin(), hs2.end(), std::inserter(hideSet, hideSet.begin()));
-                    arguments = expandArguments(macro, delimiters);
+                    arguments = expandArguments(getArguments(macro, delimiters));
                 } else {
                     hideSet = tok->hideSet();
                     delete tok;
@@ -3089,19 +3089,30 @@ namespace simplecpp {
             }
         }
 
-        /** Each argument of the call, fully macro expanded */
-        std::vector<TokenList> expandArguments(const Macro &macro, const std::vector<const Token *> &delimiters) {
+        /** Each argument of the call, as written in the call */
+        std::vector<TokenList> getArguments(const Macro &macro, const std::vector<const Token *> &delimiters) const {
             std::vector<TokenList> arguments;
             for (std::size_t i = 0; i < macro.args.size(); ++i) {
                 arguments.emplace_back(files);
                 if (i + 1U >= delimiters.size())
                     continue; // empty variadic argument
-                Input input(nullptr);
                 for (const Token *tok = delimiters[i]->next; tok != delimiters[i + 1U]; tok = tok->next)
-                    input.pending.push_back(new Token(*tok));
-                expandInput(arguments.back(), input);
+                    arguments.back().push_back(new Token(*tok));
             }
             return arguments;
+        }
+
+        /** Each argument fully macro expanded, on its own */
+        std::vector<TokenList> expandArguments(const std::vector<TokenList> &arguments) {
+            std::vector<TokenList> expanded;
+            for (const TokenList &argument : arguments) {
+                expanded.emplace_back(files);
+                Input input(nullptr);
+                for (const Token *tok = argument.cfront(); tok; tok = tok->next)
+                    input.pending.push_back(new Token(*tok));
+                expandInput(expanded.back(), input);
+            }
+            return expanded;
         }
 
         /** The replacement list of the macro, with the parameters replaced by the arguments */
