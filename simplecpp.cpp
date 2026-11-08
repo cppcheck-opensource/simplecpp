@@ -733,6 +733,41 @@ static std::string stringifyToken(const std::string &str)
     return ret;
 }
 
+/**
+ * The result of the # operator: the tokens as a string literal (C 6.10.3.2).
+ * The tokens are separated by a space where there was whitespace between them.
+ * @param tokens     the argument of #, not macro expanded
+ * @param loc        location for the warning
+ * @param macroName  the macro that is expanded, for the warning
+ * @param outputList if not null, a warning is added when a final backslash is dropped
+ * @return the string literal, including the quotes
+ */
+static std::string stringify(const simplecpp::TokenList &tokens, const simplecpp::Location &loc, const std::string &macroName, simplecpp::OutputList *outputList)
+{
+    std::string str;
+    for (const simplecpp::Token *tok = tokens.cfront(), *next; tok; tok = next) {
+        next = tok->next;
+        str += stringifyToken(tok->str());
+        if (next && tok->whitespaceahead)
+            str += ' ';
+    }
+    // An odd number of trailing backslashes would escape the closing quote and
+    // yield an unterminated string literal (undefined behavior, C 6.10.3.2p2).
+    // Drop the final backslash, as gcc and clang do.
+    std::size_t trailing = 0;
+    while (trailing < str.size() && str[str.size() - 1U - trailing] == '\\')
+        ++trailing;
+    if (trailing % 2U == 1U) {
+        str.pop_back();
+        if (outputList) {
+            outputList->emplace_back(simplecpp::Output::PORTABILITY_STRINGIFY, loc,
+                                     "Invalid string literal when expanding \'" + macroName + "\', ignoring final \'\\\'. "
+                                     "Undefined behavior according to C standard chapter 6.10.3.2, paragraph 2.");
+        }
+    }
+    return '\"' + str + '\"';
+}
+
 void simplecpp::TokenList::lineDirective(unsigned int fileIndex_, unsigned int line, Location &location)
 {
     if (fileIndex_ != location.fileIndex || line >= location.line) {
@@ -2634,28 +2669,7 @@ namespace simplecpp {
             TokenList tokenListHash(files);
             const MacroMap macros2; // temporarily bypass macro expansion
             tok = expandToken(tokenListHash, loc, tok->next, macros2, expandedmacros, parametertokens, outputList);
-            std::string str;
-            for (const Token *hashtok = tokenListHash.cfront(), *next; hashtok; hashtok = next) {
-                next = hashtok->next;
-                str += stringifyToken(hashtok->str());
-                if (next && hashtok->whitespaceahead)
-                    str += ' ';
-            }
-            // An odd number of trailing backslashes would escape the closing quote and
-            // yield an unterminated string literal (undefined behavior, C 6.10.3.2p2).
-            // Drop the final backslash, as gcc and clang do.
-            std::size_t trailing = 0;
-            while (trailing < str.size() && str[str.size() - 1U - trailing] == '\\')
-                ++trailing;
-            if (trailing % 2U == 1U) {
-                str.pop_back();
-                if (outputList) {
-                    outputList->emplace_back(Output::PORTABILITY_STRINGIFY, loc,
-                                             "Invalid string literal when expanding \'" + name() + "\', ignoring final \'\\\'. "
-                                             "Undefined behavior according to C standard chapter 6.10.3.2, paragraph 2.");
-                }
-            }
-            output.push_back(newMacroToken('\"' + str + '\"', loc, isReplaced(expandedmacros)));
+            output.push_back(newMacroToken(stringify(tokenListHash, loc, name(), outputList), loc, isReplaced(expandedmacros)));
             return tok;
         }
 
