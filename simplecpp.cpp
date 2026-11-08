@@ -2617,6 +2617,55 @@ namespace simplecpp {
         }
 
         /**
+         * Find the operand of "defined" in a replacement list: "defined X", "defined(X)" or "defined X ## Y".
+         * @param tok    the "defined" token
+         * @param first  output: X
+         * @param second output: Y for "X ## Y", otherwise nullptr
+         * @param last   output: the last token of the operand
+         * @return false if there is no operand
+         */
+        static bool findDefinedOperand(const Token *tok, const Token *&first, const Token *&second, const Token *&last) {
+            const Token * const tok2 = tok->next;
+            const Token * const tok3 = tok2 ? tok2->next : nullptr;
+            const Token * const tok4 = tok3 ? tok3->next : nullptr;
+            first = last = second = nullptr;
+            if (sameline(tok, tok4) && tok2->op == '(' && tok3->name && tok4->op == ')') {
+                first = tok3;
+                last = tok4;
+            } else if (sameline(tok,tok2) && tok2->name) {
+                first = last = tok2;
+            }
+            if (!first)
+                return false;
+            if (first->next && first->next->op == '#' && first->next->next && first->next->next->op == '#' && first->next->next->next && first->next->next->next->name && sameline(first,first->next->next->next)) {
+                second = first->next->next->next;
+                last = second;
+            }
+            return true;
+        }
+
+        /**
+         * The name of the macro that "defined" checks.
+         * @param first   X in "defined X"
+         * @param second  Y in "defined X ## Y", or nullptr
+         * @param argText for "X ## Y": gives the text of a parameter, and returns false if the token is not a parameter
+         */
+        template<class ArgText>
+        static std::string definedMacroName(const Token *first, const Token *second, ArgText argText) {
+            std::string macroName = first->str();
+            if (second) {
+                std::string text;
+                if (argText(first, text))
+                    macroName = text;
+                if (argText(second, text))
+                    macroName += text;
+                else
+                    macroName += second->str();
+            }
+            return macroName;
+        }
+
+        /**
          * Expand "defined X" or "defined(X)" in the replacement list to 1 or 0.
          * The operand can be a parameter, or two names pasted with ##.
          * @param output          destination tokenlist
@@ -2628,35 +2677,22 @@ namespace simplecpp {
          * @return false if there is no operand, then nothing is added to output
          */
         bool expandDefined(TokenList &output, const Location &loc, const Token *tok, const MacroMap &macros, const std::vector<const Token*> &parametertokens, const Token *&next) const {
-            const Token * const tok2 = tok->next;
-            const Token * const tok3 = tok2 ? tok2->next : nullptr;
-            const Token * const tok4 = tok3 ? tok3->next : nullptr;
-            const Token *defToken = nullptr;
-            const Token *lastToken = nullptr;
-            if (sameline(tok, tok4) && tok2->op == '(' && tok3->name && tok4->op == ')') {
-                defToken = tok3;
-                lastToken = tok4;
-            } else if (sameline(tok,tok2) && tok2->name) {
-                defToken = lastToken = tok2;
-            }
-            if (defToken) {
-                std::string macroName = defToken->str();
-                if (defToken->next && defToken->next->op == '#' && defToken->next->next && defToken->next->next->op == '#' && defToken->next->next->next && defToken->next->next->next->name && sameline(defToken,defToken->next->next->next)) {
-                    TokenList temp(files);
-                    if (expandArg(temp, defToken, parametertokens))
-                        macroName = temp.cback()->str();
-                    if (expandArg(temp, defToken->next->next->next, parametertokens))
-                        macroName += temp.cback() ? temp.cback()->str() : "";
-                    else
-                        macroName += defToken->next->next->next->str();
-                    lastToken = defToken->next->next->next;
-                }
-                const bool def = (macros.find(macroName) != macros.end());
-                output.push_back(newMacroToken(def ? "1" : "0", loc, true));
-                next = lastToken->next;
+            const Token *first;
+            const Token *second;
+            const Token *last;
+            if (!findDefinedOperand(tok, first, second, last))
+                return false;
+            TokenList temp(files);
+            const std::string macroName = definedMacroName(first, second, [&](const Token *argtok, std::string &text) {
+                if (!expandArg(temp, argtok, parametertokens))
+                    return false;
+                text = temp.cback() ? temp.cback()->str() : "";
                 return true;
-            }
-            return false;
+            });
+            const bool def = (macros.find(macroName) != macros.end());
+            output.push_back(newMacroToken(def ? "1" : "0", loc, true));
+            next = last->next;
+            return true;
         }
 
         bool expandArg(TokenList &output, const Token *tok, const std::vector<const Token*> &parametertokens) const {
