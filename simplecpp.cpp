@@ -1914,6 +1914,34 @@ namespace simplecpp {
         }
 
         /**
+         * Copy a macro call "NAME( ... )" to a tokenlist with no line breaks:
+         * all tokens get the location of the name.
+         * @param dest    destination tokenlist
+         * @param nameTok the macro name, followed by '('
+         * @return the token after the ')', or nullptr if the call is not terminated
+         * @throws invalidDirectiveAsMacroParameter if there is a preprocessor directive in the arguments
+         */
+        static const Token *copyMacroCall(TokenList &dest, const Token *nameTok) {
+            const Location &loc = nameTok->location;
+            dest.push_back(new Token(nameTok->str(), loc, nameTok->whitespaceahead));
+            const Token *tok = nameTok->next;
+            dest.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
+            tok = tok->next;
+            int par = 1;
+            while (tok && par > 0) {
+                if (tok->op == '(')
+                    ++par;
+                else if (tok->op == ')')
+                    --par;
+                else if (tok->op == '#' && !sameline(tok->previous, tok))
+                    throw invalidDirectiveAsMacroParameter(tok->location);
+                dest.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
+                tok = tok->next;
+            }
+            return tok;
+        }
+
+        /**
          * Expand macro. This will recursively expand inner macros.
          * @param output     destination tokenlist
          * @param rawtok     macro token
@@ -1939,24 +1967,9 @@ namespace simplecpp {
             TokenList output2(inputFiles);
 
             if (functionLike() && rawtok->next && rawtok->next->op == '(') {
-                // Copy macro call to a new tokenlist with no linebreaks
                 const Token * const rawtok1 = rawtok;
                 TokenList rawtokens2(inputFiles);
-                rawtokens2.push_back(new Token(rawtok->str(), rawtok1->location, rawtok->whitespaceahead));
-                rawtok = rawtok->next;
-                rawtokens2.push_back(new Token(rawtok->str(), rawtok1->location, rawtok->whitespaceahead));
-                rawtok = rawtok->next;
-                int par = 1;
-                while (rawtok && par > 0) {
-                    if (rawtok->op == '(')
-                        ++par;
-                    else if (rawtok->op == ')')
-                        --par;
-                    else if (rawtok->op == '#' && !sameline(rawtok->previous, rawtok))
-                        throw invalidDirectiveAsMacroParameter(rawtok->location);
-                    rawtokens2.push_back(new Token(rawtok->str(), rawtok1->location, rawtok->whitespaceahead));
-                    rawtok = rawtok->next;
-                }
+                rawtok = copyMacroCall(rawtokens2, rawtok);
                 if (expand(output2, rawtok1->location, rawtokens2.cfront(), macros, expandedmacros, outputList))
                     rawtok = rawtok1->next;
             } else {
