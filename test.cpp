@@ -1156,8 +1156,9 @@ static void define_invalid_3()
     const char code[] = "#define R()\n"
                         "R\n";
     simplecpp::OutputList outputList;
-    ASSERT_EQUALS("", preprocess(code, &outputList));
-    ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
+    // TODO: a function-like macro name at the end of the file is not a macro call, gcc outputs R
+    TODO_ASSERT_EQUALS("\nR", "", preprocess(code, &outputList));
+    TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
 }
 
 static void define_invalid_4()
@@ -1165,8 +1166,9 @@ static void define_invalid_4()
     const char code[] = "#define X(...)\n"
                         "X\n";
     simplecpp::OutputList outputList;
-    ASSERT_EQUALS("", preprocess(code, &outputList));
-    ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'X', Wrong number of parameters for macro 'X'.\n", toString(outputList));
+    // TODO: a function-like macro name at the end of the file is not a macro call, gcc outputs X
+    TODO_ASSERT_EQUALS("\nX", "", preprocess(code, &outputList));
+    TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'X', Wrong number of parameters for macro 'X'.\n", toString(outputList));
 }
 
 static void define_define_1()
