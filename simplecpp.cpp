@@ -2679,20 +2679,9 @@ namespace simplecpp {
                 throw invalidHashHash::unexpectedNewline(tok->location, name());
 
             const bool canBeConcatenatedStringOrChar = isStringLiteral(A->str()) || isCharLiteral(A->str());
-            // A is a punctuator; the result is checked when B has been expanded
-            const bool punctuatorA = (!A->name && !A->number && !A->str().empty() && !canBeConcatenatedStringOrChar);
 
             const Token * const B = tok->next->next;
-            if (!punctuatorA) {
-                if (!B->name && !B->number && B->op && !B->isOneOf("#="))
-                    throw invalidHashHash::unexpectedToken(tok->location, name(), B);
-                if (B->op == '=')
-                    throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
-            }
-
-            // Superficial check; more in-depth would in theory be possible _after_ expandArg
-            if (canBeConcatenatedStringOrChar && (B->number || !B->name))
-                throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
+            checkHashHashOperands(tok->location, name(), A, B);
 
             TokenList tokensB(files);
             const Token *nextTok = B->next;
@@ -2721,24 +2710,16 @@ namespace simplecpp {
                         strAB = ",";
                     }
                     else {
-                        if (punctuatorA && !isValidPunctuatorPaste(A->str() + tokensB.cfront()->str()))
-                            throw invalidHashHash::cannotCombine(tok->location, name(), A, tokensB.cfront());
+                        checkPunctuatorPaste(tok->location, name(), A, tokensB.cfront());
                         strAB = A->str() + tokensB.cfront()->str();
                         tokensB.deleteToken(tokensB.front());
                     }
                 } else {
-                    if (punctuatorA && !isValidPunctuatorPaste(A->str() + B->str()))
-                        throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
+                    checkPunctuatorPaste(tok->location, name(), A, B);
                     strAB = A->str() + B->str();
                 }
 
-                // producing universal character is undefined behavior
-                if (A->previous && A->previous->str() == "\\") {
-                    if (strAB[0] == 'u' && strAB.size() == 5)
-                        throw invalidHashHash::universalCharacterUB(tok->location, name(), A, strAB);
-                    if (strAB[0] == 'U' && strAB.size() == 9)
-                        throw invalidHashHash::universalCharacterUB(tok->location, name(), A, strAB);
-                }
+                checkUniversalCharacterPaste(tok->location, name(), A, strAB);
 
                 if (varargs && tokensB.empty() && tok->previous->str() == ",") {
                     output.deleteToken(A);
@@ -2778,6 +2759,60 @@ namespace simplecpp {
             }
 
             return nextTok;
+        }
+
+        /** A is a punctuator, not a name, number or literal. Pasting it is checked after B is expanded. */
+        static bool isPunctuatorOperand(const Token *A) {
+            return !A->name && !A->number && !A->str().empty() && !isStringLiteral(A->str()) && !isCharLiteral(A->str());
+        }
+
+        /**
+         * Check the operands of A ## B before B is expanded.
+         * @param loc       the location of the ##
+         * @param macroName the macro that is expanded
+         * @param A         the token before ##, already expanded
+         * @param B         the token after ## in the macro definition
+         * @throws invalidHashHash if A and B can not be pasted
+         */
+        static void checkHashHashOperands(const Location &loc, const std::string &macroName, const Token *A, const Token *B) {
+            if (!isPunctuatorOperand(A)) {
+                if (!B->name && !B->number && B->op && !B->isOneOf("#="))
+                    throw invalidHashHash::unexpectedToken(loc, macroName, B);
+                if (B->op == '=')
+                    throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+            }
+
+            // Superficial check; more in-depth would in theory be possible _after_ expandArg
+            if ((isStringLiteral(A->str()) || isCharLiteral(A->str())) && (B->number || !B->name))
+                throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+        }
+
+        /**
+         * When A is a punctuator, check that pasting A and B gives a valid token.
+         * @param loc       the location of the ##
+         * @param macroName the macro that is expanded
+         * @param A         the token before ##
+         * @param B         the first token after ##, after expansion
+         * @throws invalidHashHash if the result is not a valid token
+         */
+        static void checkPunctuatorPaste(const Location &loc, const std::string &macroName, const Token *A, const Token *B) {
+            if (isPunctuatorOperand(A) && !isValidPunctuatorPaste(A->str() + B->str()))
+                throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+        }
+
+        /**
+         * Producing a universal character name with ## is undefined behavior.
+         * @param loc       the location of the ##
+         * @param macroName the macro that is expanded
+         * @param A         the token before ##
+         * @param strAB     the pasted text
+         * @throws invalidHashHash if A follows a backslash and strAB is a universal character name
+         */
+        static void checkUniversalCharacterPaste(const Location &loc, const std::string &macroName, const Token *A, const std::string &strAB) {
+            if (!A->previous || A->previous->str() != "\\")
+                return;
+            if ((strAB[0] == 'u' && strAB.size() == 5) || (strAB[0] == 'U' && strAB.size() == 9))
+                throw invalidHashHash::universalCharacterUB(loc, macroName, A, strAB);
         }
 
         static bool isReplaced(const std::set<std::string> &expandedmacros) {
