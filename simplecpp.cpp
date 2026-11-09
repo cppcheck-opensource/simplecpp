@@ -2209,8 +2209,10 @@ namespace simplecpp {
          * @param nameTokInst    the macro name in the call
          * @param calledInDefine the call is in a #define, so the arguments must be on the same line
          * @return the tokens that delimit the arguments: the '(', each ',' between two arguments and the ')'.
-         *         Empty when the macro is not function-like or the name is not followed by '('.
-         * @throws wrongNumberOfParameters if a function-like macro has the wrong number of arguments
+         *         Empty when the macro is not function-like.
+         * @throws wrongNumberOfParameters if a function-like macro has the wrong number of arguments.
+         *         This includes the case where the name is not followed by '(' (or is the last token),
+         *         so the caller must check for that first if it is not an error.
          */
         std::vector<const Token *> getMacroParameters(const Token *nameTokInst, bool calledInDefine) const {
             if (!functionLike())
