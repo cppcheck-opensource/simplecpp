@@ -117,8 +117,6 @@ namespace simplecpp {
     };
 #endif // defined(__cpp_lib_string_view) && !defined(__cpp_lib_span)
 
-    class Macro;
-
     /**
      * Location in source code
      */
@@ -165,7 +163,7 @@ namespace simplecpp {
         }
 
         Token(const Token &tok) :
-            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), string(tok.string), mExpandedFrom(tok.mExpandedFrom) {}
+            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), string(tok.string), mHideSet(tok.mHideSet) {}
 
         Token &operator=(const Token &tok) = delete;
 
@@ -210,17 +208,19 @@ namespace simplecpp {
             return tok;
         }
 
-        void setExpandedFrom(const Token *tok, const Macro* m) {
-            mExpandedFrom = tok->mExpandedFrom;
-            mExpandedFrom.insert(m);
-            if (tok->whitespaceahead)
-                whitespaceahead = true;
+        /**
+         * The hide set holds the macros that this token must not be expanded into.
+         * Set it to the hide set of tok, with the macro macroName added.
+         */
+        void setHideSet(const Token *tok, const TokenString &macroName) {
+            mHideSet = tok->mHideSet;
+            mHideSet.insert(macroName);
         }
-        bool isExpandedFrom(const Macro* m) const {
-            return mExpandedFrom.find(m) != mExpandedFrom.end();
+        bool isInHideSet(const TokenString &macroName) const {
+            return mHideSet.find(macroName) != mHideSet.end();
         }
-        void markExpandedFrom(const Macro* m) {
-            mExpandedFrom.insert(m);
+        void addToHideSet(const TokenString &macroName) {
+            mHideSet.insert(macroName);
         }
 
         void printAll() const;
@@ -236,7 +236,7 @@ namespace simplecpp {
 
         TokenString string;
 
-        std::set<const Macro*> mExpandedFrom;
+        std::set<TokenString> mHideSet;
     };
 
     /** Output from preprocessor */
