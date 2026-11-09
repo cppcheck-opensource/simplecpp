@@ -3405,6 +3405,10 @@ namespace simplecpp {
                 TokenList operand(files);
                 getOperand(operand, macro, tok, call, expand);
                 const bool empty = operand.empty();
+                // an empty __VA_ARGS__ at the end of a call removes the comma before it
+                if (empty && !hashHash && parameter && operandTok->str() == "__VA_ARGS__" && result.back() && result.back()->str() == "," &&
+                    operandTok->nextSkipComments() && operandTok->nextSkipComments()->str() == ")")
+                    result.deleteToken(result.back());
                 if (hashHash)
                     paste(result, operand, previousEmpty, macro, hashHash, operandTok);
                 else

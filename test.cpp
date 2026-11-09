@@ -1506,7 +1506,6 @@ static void define_va_args_3()   // min number of arguments
 
 static void define_va_args_4() // cppcheck trac #9754
 {
-    HIDESET_EXPANSION_TODO(); // comma before an empty __VA_ARGS__
     const char code[] = "#define A(x, y, ...) printf(x, y, __VA_ARGS__)\n"
                         "A(1, 2)\n";
     ASSERT_EQUALS("\nprintf ( 1 , 2 )", preprocess(code));
