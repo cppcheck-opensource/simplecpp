@@ -3127,7 +3127,12 @@ namespace simplecpp {
                     continue;
                 }
 
-                const MacroCall call = readMacroCall(macro, tok, input);
+                MacroCall call;
+                if (!readMacroCall(call, macro, tok, input)) {
+                    // unterminated macro call: the name is not expanded
+                    output.push_back(tok);
+                    continue;
+                }
                 TokenList result(files);
                 substitute(result, macro, call);
                 input.pushFront(result);
@@ -3136,21 +3141,28 @@ namespace simplecpp {
 
         /**
          * Read a macro call: the name, and "( ... )" for a function-like macro.
+         * @param call    the macro call
          * @param macro   the macro
-         * @param nameTok the macro name, it is deleted
+         * @param nameTok the macro name, it is deleted unless the call is unterminated
          * @param input   the input after the name
+         * @return false if the call is not terminated; the tokens after the name are put back in input
          * @throws wrongNumberOfParameters if a function-like macro has the wrong number of arguments
          */
-        MacroCall readMacroCall(const Macro &macro, Token *nameTok, Input &input) {
-            MacroCall call;
+        bool readMacroCall(MacroCall &call, const Macro &macro, Token *nameTok, Input &input) {
             if (!macro.functionLike()) {
                 call.hideSet = nameTok->hideSet();
                 call.whitespaceAfter = nameTok->whitespaceahead;
                 delete nameTok;
             } else {
                 TokenList tokens(files);
-                tokens.push_back(nameTok);
-                readCall(tokens, input);
+                tokens.push_back(new Token(*nameTok));
+                if (!readCall(tokens, input)) {
+                    // give the tokens after the name back
+                    tokens.deleteToken(tokens.front());
+                    input.pushFront(tokens);
+                    return false;
+                }
+                delete nameTok;
                 const std::vector<const Token *> delimiters = macro.getMacroParameters(tokens.cfront(), false);
                 // the name and the ) have the hide sets of the macro calls that this call
                 // was produced by, the arguments are not affected by them
@@ -3162,19 +3174,20 @@ namespace simplecpp {
                 call.whitespaceAfter = delimiters.back()->whitespaceahead;
             }
             call.hideSet.insert(macro.name());
-            return call;
+            return true;
         }
 
-        /** Read "( ... )" after the macro name in call */
-        static void readCall(TokenList &call, Input &input) {
+        /** Read "( ... )" after the macro name in call; false if there is no ) */
+        static bool readCall(TokenList &call, Input &input) {
             int par = 0;
             while (Token * const tok = input.read()) {
                 call.push_back(tok);
                 if (tok->op == '(')
                     ++par;
                 else if (tok->op == ')' && --par == 0)
-                    return;
+                    return true;
             }
+            return false;
         }
 
         /** Each argument of the call, as written in the call */

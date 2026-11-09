@@ -1370,7 +1370,6 @@ static void define_define_13() // issue #49 - empty macro
 
 static void define_define_14() // issue #58 - endless recursion
 {
-    HIDESET_EXPANSION_TODO(); // unterminated macro call
     const char code[] = "#define z f(w\n"
                         "#define f()\n"
                         "#define w f(z\n"
