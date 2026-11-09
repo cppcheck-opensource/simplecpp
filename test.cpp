@@ -5,6 +5,7 @@
 
 #include "simplecpp.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -45,6 +46,7 @@ static int numberOfFailedAssertions = 0;
 
 #define ASSERT_EQUALS(expected, actual)  (assertEquals((expected), (actual), __LINE__))
 #define ASSERT_THROW_EQUALS(stmt, e, expected) do { try { stmt; assertThrowFailed(__LINE__); } catch (const e& ex) { assertEquals((expected), (ex.what()), __LINE__); } } while (false)
+#define TODO_ASSERT_EQUALS(wanted, current, actual)  (todoAssertEquals((wanted), (current), (actual), __LINE__))
 
 static std::string pprint(const std::string &in)
 {
@@ -82,6 +84,23 @@ static int assertEquals(const std::string &expected, const std::string &actual, 
 static int assertEquals(const long long &expected, const long long &actual, int line)
 {
     return assertEquals(std::to_string(expected), std::to_string(actual), line);
+}
+
+/**
+ * For a known bug: actual must be the current (wrong) value. When the bug is
+ * fixed and actual is the wanted value, the assertion fails so that it is
+ * changed to ASSERT_EQUALS.
+ */
+static void todoAssertEquals(const std::string &wanted, const std::string &current, const std::string &actual, int line)
+{
+    if (wanted == actual) {
+        numberOfFailedAssertions++;
+        std::cerr << "------ TODO assertion fixed (" << inputString(USE_INPUT) << ")---------" << std::endl;
+        std::cerr << "line test.cpp:" << line << std::endl;
+        std::cerr << "change TODO_ASSERT_EQUALS to ASSERT_EQUALS" << std::endl;
+        return;
+    }
+    assertEquals(current, actual, line);
 }
 
 static void assertThrowFailed(int line)
@@ -265,6 +284,48 @@ static std::string toString(const simplecpp::OutputList &outputList)
         ostr << output.msg << '\n';
     }
     return ostr.str();
+}
+
+/**
+ * Preprocess the code. Each output token is written as str(line:col), or as
+ * str + '@' + macro name + (line:col) when it comes from a macro expansion.
+ */
+static std::string expandedTokens(const char code[], const simplecpp::DUI &dui = simplecpp::DUI(), std::list<simplecpp::MacroUsage> *macroUsage = nullptr)
+{
+    std::vector<std::string> files;
+    simplecpp::FileDataCache cache;
+    simplecpp::TokenList tokens(files);
+    const simplecpp::TokenList rawtokens = makeTokenList(code, files);
+    simplecpp::preprocess(tokens, rawtokens, files, cache, dui, nullptr, macroUsage);
+    std::string ret;
+    for (const simplecpp::Token *tok = tokens.cfront(); tok; tok = tok->next) {
+        if (!ret.empty())
+            ret += ' ';
+        ret += tok->str();
+        if (!tok->macro.empty())
+            ret += '@' + tok->macro;
+        ret += '(' + std::to_string(tok->location.line) + ':' + std::to_string(tok->location.col) + ')';
+    }
+    return ret;
+}
+
+/** Each macro usage as "name line:col use line:col", with " unknown" if the value is not known.
+ *  The usages are sorted, the order of the macros is not specified. */
+static std::string toString(const std::list<simplecpp::MacroUsage> &macroUsage)
+{
+    std::vector<std::string> lines;
+    for (const simplecpp::MacroUsage &mu : macroUsage) {
+        std::string line = mu.macroName + ' ' + std::to_string(mu.macroLocation.line) + ':' + std::to_string(mu.macroLocation.col) +
+                           " use " + std::to_string(mu.useLocation.line) + ':' + std::to_string(mu.useLocation.col);
+        if (!mu.macroValueKnown)
+            line += " unknown";
+        lines.push_back(line + '\n');
+    }
+    std::sort(lines.begin(), lines.end());
+    std::string ret;
+    for (const std::string &line : lines)
+        ret += line;
+    return ret;
 }
 
 static void backslash()
@@ -1095,8 +1156,9 @@ static void define_invalid_3()
     const char code[] = "#define R()\n"
                         "R\n";
     simplecpp::OutputList outputList;
-    ASSERT_EQUALS("", preprocess(code, &outputList));
-    ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
+    // TODO: a function-like macro name at the end of the file is not a macro call, gcc outputs R
+    TODO_ASSERT_EQUALS("\nR", "", preprocess(code, &outputList));
+    TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
 }
 
 static void define_invalid_4()
@@ -1104,8 +1166,9 @@ static void define_invalid_4()
     const char code[] = "#define X(...)\n"
                         "X\n";
     simplecpp::OutputList outputList;
-    ASSERT_EQUALS("", preprocess(code, &outputList));
-    ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'X', Wrong number of parameters for macro 'X'.\n", toString(outputList));
+    // TODO: a function-like macro name at the end of the file is not a macro call, gcc outputs X
+    TODO_ASSERT_EQUALS("\nX", "", preprocess(code, &outputList));
+    TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'X', Wrong number of parameters for macro 'X'.\n", toString(outputList));
 }
 
 static void define_define_1()
@@ -2241,6 +2304,231 @@ static void hashhash_punctuator_invalid()
     simplecpp::OutputList outputList;
     ASSERT_EQUALS("", preprocess(code, &outputList));
     ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'cat', Invalid ## usage when expanding 'cat': Combining '+' and 'x' yields an invalid token.\n", toString(outputList));
+}
+
+static void macro_c11_example3() // C11 6.10.3.5 EXAMPLE 3
+{
+    const char code[] =
+        "#define x 3\n"
+        "#define f(a) f(x * (a))\n"
+        "#undef x\n"
+        "#define x 2\n"
+        "#define g f\n"
+        "#define z z[0]\n"
+        "#define h g(~\n"
+        "#define m(a) a(w)\n"
+        "#define w 0,1\n"
+        "#define t(a) a\n"
+        "#define p() int\n"
+        "#define q(x) x\n"
+        "#define r(x,y) x ## y\n"
+        "#define str(x) # x\n"
+        "f(y+1) + f(f(z)) % t(t(g)(0) + t)(1);\n"
+        "g(x+(3,4)-w) | h 5) & m\n"
+        "(f)^m(m);\n"
+        "p() i[q()] = { q(1), r(2,3), r(4,), r(,5), r(,) };\n"
+        "char c[2][6] = { str(hello), str() };\n";
+    // TODO: r(,) leaves an empty token
+    TODO_ASSERT_EQUALS("\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
+                       "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
+                       "^ m ( 0 , 1 ) ;\n"
+                       "int i [ ] = { 1 , 23 , 4 , 5 , } ;\n"
+                       "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
+                       "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
+                       "^ m ( 0 , 1 ) ;\n"
+                       "int i [ ] = { 1 , 23 , 4 , 5 ,  } ;\n"
+                       "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
+                       preprocess(code));
+}
+
+static void macro_c11_example4() // C11 6.10.3.5 EXAMPLE 4
+{
+    const char code[] =
+        "#define str(s) # s\n"
+        "#define xstr(s) str(s)\n"
+        "#define debug(s, t) printf(\"x\" # s \"= %d, x\" # t \"= %s\", \\\n"
+        " x ## s, x ## t)\n"
+        "#define INCFILE(n) vers ## n\n"
+        "#define glue(a, b) a ## b\n"
+        "#define xglue(a, b) glue(a, b)\n"
+        "#define HIGHLOW \"hello\"\n"
+        "#define LOW LOW \", world\"\n"
+        "debug(1, 2);\n"
+        "fputs(str(strncmp(\"abc\\0d\", \"abc\", '\\4') // this goes away\n"
+        " == 0) str(: @\\n), s);\n"
+        "xstr(INCFILE(2).h)\n"
+        "glue(HIGH, LOW);\n"
+        "xglue(HIGH, LOW)\n";
+    // the comments are removed before preprocessing, like cppcheck and the simplecpp program do
+    simplecpp::DUI dui;
+    dui.removeComments = true;
+    // TODO: the space before == is lost after the comment and newline in the # argument
+    TODO_ASSERT_EQUALS("\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "printf ( \"x\" \"1\" \"= %d, x\" \"2\" \"= %s\" , x1 , x2 ) ;\n"
+                       "fputs ( \"strncmp(\\\"abc\\\\0d\\\", \\\"abc\\\", '\\\\4') == 0\"\n"
+                       "\": @\\n\" , s ) ;\n"
+                       "\"vers2.h\"\n"
+                       "\"hello\" ;\n"
+                       "\"hello\" \", world\"",
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "\n"
+                       "printf ( \"x\" \"1\" \"= %d, x\" \"2\" \"= %s\" , x1 , x2 ) ;\n"
+                       "fputs ( \"strncmp(\\\"abc\\\\0d\\\", \\\"abc\\\", '\\\\4') ==0\"\n"
+                       "\": @\\n\" , s ) ;\n"
+                       "\"vers2.h\"\n"
+                       "\"hello\" ;\n"
+                       "\"hello\" \", world\"",
+                       preprocess(code, dui));
+}
+
+static void macro_c11_example5() // C11 6.10.3.5 EXAMPLE 5
+{
+    const char code[] =
+        "#define t(x,y,z) x ## y ## z\n"
+        "int j[] = { t(1,2,3), t(,4,5), t(6,,7), t(8,9,),\n"
+        " t(10,,), t(,11,), t(,,12), t(,,) };\n";
+    // TODO: t(,,) leaves an empty token
+    TODO_ASSERT_EQUALS("\n"
+                       "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
+                       "10 , 11 , 12 , } ;",
+                       "\n"
+                       "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
+                       "10 , 11 , 12 ,  } ;",
+                       preprocess(code));
+}
+
+static void macro_c11_example7() // C11 6.10.3.5 EXAMPLE 7
+{
+    const char code[] =
+        "#define debug(...) fprintf(stderr, __VA_ARGS__)\n"
+        "#define showlist(...) puts(#__VA_ARGS__)\n"
+        "#define report(test, ...) ((test)?puts(#test):\\\n"
+        " printf(__VA_ARGS__))\n"
+        "debug(\"Flag\");\n"
+        "debug(\"X = %d\\n\", x);\n"
+        "showlist(The first, second, and third items.);\n"
+        "report(x>y, \"x is %d but y is %d\", x, y);\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "fprintf ( stderr , \"Flag\" ) ;\n"
+                  "fprintf ( stderr , \"X = %d\\n\" , x ) ;\n"
+                  "puts ( \"The first, second, and third items.\" ) ;\n"
+                  "( ( x > y ) ? puts ( \"x>y\" ) : printf ( \"x is %d but y is %d\" , x , y ) ) ;",
+                  preprocess(code));
+}
+
+static void macro_c23_va_opt_examples() // C23 6.10.5.1 EXAMPLE
+{
+    const char code[] =
+        "#define F(...) f(0 __VA_OPT__(,) __VA_ARGS__)\n"
+        "#define G(X, ...) f(0, X __VA_OPT__(,) __VA_ARGS__)\n"
+        "#define SDEF(sname, ...) S sname __VA_OPT__(= { __VA_ARGS__ })\n"
+        "#define EMP\n"
+        "F(a,b,c)\n"
+        "F()\n"
+        "F(EMP)\n"
+        "G(a,b,c)\n"
+        "G(a,)\n"
+        "G(a)\n"
+        "SDEF(foo);\n"
+        "SDEF(bar, 1, 2);\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "f ( 0 , a , b , c )\n"
+                  "f ( 0 )\n"
+                  "f ( 0 )\n"
+                  "f ( 0 , a , b , c )\n"
+                  "f ( 0 , a )\n"
+                  "f ( 0 , a )\n"
+                  "S foo ;\n"
+                  "S bar = { 1 , 2 } ;",
+                  preprocess(code));
+}
+
+static void hashhash_empty_placemarker()
+{
+    const char code[] =
+        "#define r(x,y) x ## y\n"
+        "{ r(,) }\n";
+    std::vector<std::string> files;
+    simplecpp::FileDataCache cache;
+    simplecpp::TokenList tokens(files);
+    const simplecpp::TokenList rawtokens = makeTokenList(code, files);
+    simplecpp::preprocess(tokens, rawtokens, files, cache, simplecpp::DUI());
+    std::string str;
+    for (const simplecpp::Token *tok = tokens.cfront(); tok; tok = tok->next)
+        str += "[" + tok->str() + "]";
+    // TODO: pasting two empty arguments gives an empty token
+    TODO_ASSERT_EQUALS("[{][}]", "[{][][}]", str);
+}
+
+static void hashhash_invalid_dotdot()
+{
+    const char code[] =
+        "#define cat(a,b) a##b\n"
+        "cat(.,.)\n";
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("", preprocess(code, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'cat', Invalid ## usage when expanding 'cat': Combining '.' and '.' yields an invalid token.\n", toString(outputList));
+}
+
+static void hashhash_invalid_name_string()
+{
+    const char code[] =
+        "#define cat(a,b) a##b\n"
+        "cat(a,\"s\")\n";
+    simplecpp::OutputList outputList;
+    // TODO: a"s" is not a valid token, gcc reports an error
+    TODO_ASSERT_EQUALS("", "\na\"s\"", preprocess(code, &outputList));
+    TODO_ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'cat', Invalid ## usage when expanding 'cat': Combining 'a' and '\"s\"' yields an invalid token.\n", "", toString(outputList));
 }
 
 static void hashhash_va_args_unexpected()
@@ -4284,36 +4572,19 @@ static void stringify1()
     ASSERT_EQUALS("\n#line 1 \"A.h\"\n1\n2\n#line 1 \"A.h\"\n1\n2", out.stringify());
 }
 
+// Token::macro, the locations of expanded tokens and the macro usage are used by cppcheck
 static void tokenMacro1()
 {
     const char code[] = "#define A 123\n"
                         "A";
-    std::vector<std::string> files;
-    simplecpp::FileDataCache cache;
-    simplecpp::TokenList tokenList(files);
-    const simplecpp::TokenList rawtokens = makeTokenList(code,files);
-    simplecpp::preprocess(tokenList, rawtokens, files, cache, simplecpp::DUI());
-    ASSERT_EQUALS("A", tokenList.cback()->macro);
+    ASSERT_EQUALS("123@A(2:1)", expandedTokens(code));
 }
 
 static void tokenMacro2()
 {
     const char code[] = "#define ADD(X,Y) X+Y\n"
                         "ADD(1,2)";
-    std::vector<std::string> files;
-    simplecpp::FileDataCache cache;
-    simplecpp::TokenList tokenList(files);
-    const simplecpp::TokenList rawtokens = makeTokenList(code,files);
-    simplecpp::preprocess(tokenList, rawtokens, files, cache, simplecpp::DUI());
-    const simplecpp::Token *tok = tokenList.cfront();
-    ASSERT_EQUALS("1", tok->str());
-    ASSERT_EQUALS("", tok->macro);
-    tok = tok->next;
-    ASSERT_EQUALS("+", tok->str());
-    ASSERT_EQUALS("ADD", tok->macro);
-    tok = tok->next;
-    ASSERT_EQUALS("2", tok->str());
-    ASSERT_EQUALS("", tok->macro);
+    ASSERT_EQUALS("1(2:1) +@ADD(2:1) 2(2:1)", expandedTokens(code));
 }
 
 static void tokenMacro3()
@@ -4321,20 +4592,9 @@ static void tokenMacro3()
     const char code[] = "#define ADD(X,Y) X+Y\n"
                         "#define FRED  1\n"
                         "ADD(FRED,2)";
-    std::vector<std::string> files;
-    simplecpp::FileDataCache cache;
-    simplecpp::TokenList tokenList(files);
-    const simplecpp::TokenList rawtokens = makeTokenList(code,files);
-    simplecpp::preprocess(tokenList, rawtokens, files, cache, simplecpp::DUI());
-    const simplecpp::Token *tok = tokenList.cfront();
-    ASSERT_EQUALS("1", tok->str());
-    ASSERT_EQUALS("FRED", tok->macro);
-    tok = tok->next;
-    ASSERT_EQUALS("+", tok->str());
-    ASSERT_EQUALS("ADD", tok->macro);
-    tok = tok->next;
-    ASSERT_EQUALS("2", tok->str());
-    ASSERT_EQUALS("", tok->macro);
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("1@FRED(3:1) +@ADD(3:1) 2(3:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("ADD 1:9 use 3:1\nFRED 2:9 use 3:1\n", toString(macroUsage));
 }
 
 static void tokenMacro4()
@@ -4342,14 +4602,9 @@ static void tokenMacro4()
     const char code[] = "#define A B\n"
                         "#define B 1\n"
                         "A";
-    std::vector<std::string> files;
-    simplecpp::FileDataCache cache;
-    simplecpp::TokenList tokenList(files);
-    const simplecpp::TokenList rawtokens = makeTokenList(code,files);
-    simplecpp::preprocess(tokenList, rawtokens, files, cache, simplecpp::DUI());
-    const simplecpp::Token * const tok = tokenList.cfront();
-    ASSERT_EQUALS("1", tok->str());
-    ASSERT_EQUALS("A", tok->macro);
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("1@A(3:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("A 1:9 use 3:1\nB 2:9 use 3:1\n", toString(macroUsage));
 }
 
 static void tokenMacro5()
@@ -4357,14 +4612,7 @@ static void tokenMacro5()
     const char code[] = "#define SET_BPF(code) (code)\n"
                         "#define SET_BPF_JUMP(code) SET_BPF(D | code)\n"
                         "SET_BPF_JUMP(A | B | C);";
-    std::vector<std::string> files;
-    simplecpp::FileDataCache cache;
-    simplecpp::TokenList tokenList(files);
-    const simplecpp::TokenList rawtokens = makeTokenList(code,files);
-    simplecpp::preprocess(tokenList, rawtokens, files, cache, simplecpp::DUI());
-    const simplecpp::Token * const tok = tokenList.cfront()->next;
-    ASSERT_EQUALS("D", tok->str());
-    ASSERT_EQUALS("SET_BPF_JUMP", tok->macro);
+    ASSERT_EQUALS("(@SET_BPF(3:1) D@SET_BPF_JUMP(3:1) |@SET_BPF_JUMP(3:1) A(3:1) |(3:1) B(3:1) |(3:1) C(3:1) )@SET_BPF(3:1) ;(3:24)", expandedTokens(code));
 }
 
 static void tokenMacro6()
@@ -4375,21 +4623,100 @@ static void tokenMacro6()
                         "FILE()\n"
                         "LINE()\n"
                         "COUNTER()\n";
-    std::vector<std::string> files;
-    simplecpp::FileDataCache cache;
-    simplecpp::TokenList tokenList(files);
-    const simplecpp::TokenList rawtokens = makeTokenList(code,files);
-    simplecpp::preprocess(tokenList, rawtokens, files, cache, simplecpp::DUI());
-    const simplecpp::Token *tok;
+    ASSERT_EQUALS("\"\"@__FILE__(4:1) 5@__LINE__(5:1) 0@__COUNTER__(6:1)", expandedTokens(code));
+}
 
-    tok = tokenList.cfront();
-    ASSERT_EQUALS("__FILE__", tok->macro);
+static void tokenMacro7()
+{
+    const char code[] = "#define A 1+2\n"
+                        "x A y\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("x(2:1) 1@A(2:3) +@A(2:3) 2@A(2:3) y(2:5)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("A 1:9 use 2:3\n", toString(macroUsage));
+}
 
-    tok = tok->next;
-    ASSERT_EQUALS("__LINE__", tok->macro);
+static void tokenMacro8()
+{
+    // the call g(2) is completed with tokens after the expansion of f.
+    // The tokens get the location of the ( and the macro g
+    const char code[] = "#define f g\n"
+                        "#define g(x) x+1\n"
+                        "f(2)\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("2(3:2) +@g(3:2) 1@g(3:2)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("f 1:9 use 3:1\ng 2:9 use 3:2\n", toString(macroUsage));
+}
 
-    tok = tok->next;
-    ASSERT_EQUALS("__COUNTER__", tok->macro);
+static void tokenMacro9()
+{
+    // the arguments of g( come after the expansion of f
+    const char code[] = "#define g(x) x+1\n"
+                        "#define f g(\n"
+                        "f 2)\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("2(3:3) +@g(3:3) 1@g(3:3)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("f 2:9 use 3:1\ng 1:9 use 3:3\n", toString(macroUsage));
+}
+
+static void tokenMacro10()
+{
+    // the results of # and ## have no macro name
+    const char code[] = "#define str(x) #x\n"
+                        "#define cat(a,b) a##b\n"
+                        "str(a b) cat(x,y)\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("\"a b\"(3:1) xy(3:10)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("cat 2:9 use 3:10\nstr 1:9 use 3:1\n", toString(macroUsage));
+}
+
+static void tokenMacro11()
+{
+    const char code[] = "#define F(...) f(__VA_ARGS__)\n"
+                        "F(1,2)\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("f@F(2:1) (@F(2:1) 1(2:1) ,(2:1) 2(2:1) )@F(2:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 2:1\n", toString(macroUsage));
+}
+
+static void tokenMacro12()
+{
+    const char code[] = "#define f f\n"
+                        "f\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("f@f(2:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("f 1:9 use 2:1\n", toString(macroUsage));
+}
+
+static void tokenMacro13()
+{
+    // all tokens of the expansion get the location of the macro name
+    const char code[] = "#define ADD(X,Y) X+Y\n"
+                        "ADD(1,\n"
+                        "  2)\n"
+                        "z\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("1(2:1) +@ADD(2:1) 2(2:1) z(4:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("ADD 1:9 use 2:1\n", toString(macroUsage));
+}
+
+static void tokenMacro14()
+{
+    // A is used in the argument and in the body, so it is listed twice
+    const char code[] = "#define A 1\n"
+                        "#define B(x) x A\n"
+                        "B(A)\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("1@A(3:1) 1@A(3:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("A 1:9 use 3:1\nA 1:9 use 3:1\nB 2:9 use 3:1\n", toString(macroUsage));
+}
+
+static void tokenMacro15()
+{
+    simplecpp::DUI dui;
+    dui.defines.emplace_back("D=1+2");
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("x(1:1) 1@D(1:3) +@D(1:3) 2@D(1:3)", expandedTokens("x D\n", dui, &macroUsage));
+    ASSERT_EQUALS("D 1:1 use 1:3 unknown\n", toString(macroUsage));
 }
 
 static void undef()
@@ -5191,6 +5518,11 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(define6);
     TEST_CASE(define7);
     TEST_CASE(define8);
+    TEST_CASE(macro_c11_example3);
+    TEST_CASE(macro_c11_example4);
+    TEST_CASE(macro_c11_example5);
+    TEST_CASE(macro_c11_example7);
+    TEST_CASE(macro_c23_va_opt_examples);
     TEST_CASE(define9);
     TEST_CASE(define10);
     TEST_CASE(define11);
@@ -5314,6 +5646,9 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(hashhash_empty_va_args);
     TEST_CASE(hashhash_punctuator);
     TEST_CASE(hashhash_punctuator_invalid);
+    TEST_CASE(hashhash_empty_placemarker);
+    TEST_CASE(hashhash_invalid_dotdot);
+    TEST_CASE(hashhash_invalid_name_string);
     TEST_CASE(hashhash_va_args_unexpected);
 
     // C standard, 5.1.1.2, paragraph 4:
@@ -5445,6 +5780,15 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(tokenMacro4);
     TEST_CASE(tokenMacro5);
     TEST_CASE(tokenMacro6);
+    TEST_CASE(tokenMacro7);
+    TEST_CASE(tokenMacro8);
+    TEST_CASE(tokenMacro9);
+    TEST_CASE(tokenMacro10);
+    TEST_CASE(tokenMacro11);
+    TEST_CASE(tokenMacro12);
+    TEST_CASE(tokenMacro13);
+    TEST_CASE(tokenMacro14);
+    TEST_CASE(tokenMacro15);
 
     TEST_CASE(undef);
 
