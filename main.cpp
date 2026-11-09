@@ -153,6 +153,12 @@ int main(int argc, char **argv)
                     found = true;
                 }
                 break;
+            case 'h':
+                if (std::strcmp(arg, "-hideset-expansion")==0) {
+                    dui.hideSetExpansion = true;
+                    found = true;
+                }
+                break;
             }
             if (!found) {
                 std::cout << "error: option '" << arg << "' is unknown." << std::endl;
@@ -187,6 +193,7 @@ int main(int argc, char **argv)
         std::cout << "  -e              Output errors only." << std::endl;
         std::cout << "  -f              Fail when errors were encountered (exitcode 1)." << std::endl;
         std::cout << "  -l              Print lines numbers." << std::endl;
+        std::cout << "  -hideset-expansion  Use the new macro expansion with hide sets (work in progress)." << std::endl;
         return 0;
     }
 
