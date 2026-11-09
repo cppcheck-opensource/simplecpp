@@ -1161,6 +1161,42 @@ static void define_invalid_3()
     TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
 }
 
+static void define_wrong_number_of_arguments()
+{
+    {
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess("#define f(a,b) a+b\nf(1)\n", &outputList));
+        ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'f', Wrong number of parameters for macro 'f'.\n", toString(outputList));
+    }
+    {
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess("#define f(a,b) a+b\nf(1,2,3)\n", &outputList));
+        ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'f', Wrong number of parameters for macro 'f'.\n", toString(outputList));
+    }
+    {
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess("#define f(a,b,...) a+b\nf(1)\n", &outputList));
+        ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'f', Wrong number of parameters for macro 'f'.\n", toString(outputList));
+    }
+    {
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\n1", preprocess("#define f(a,...) a __VA_ARGS__\nf(1)\n", &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
+    {
+        // a function-like macro name that is not followed by ( is not expanded
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("\nf ;", preprocess("#define f(a) a\nf;\n", &outputList));
+        ASSERT_EQUALS("", toString(outputList));
+    }
+    {
+        // TODO: f takes no arguments, gcc reports an error
+        simplecpp::OutputList outputList;
+        TODO_ASSERT_EQUALS("", "\n1", preprocess("#define f() 1\nf(1)\n", &outputList));
+        TODO_ASSERT_EQUALS("file0,2,syntax_error,failed to expand 'f', Wrong number of parameters for macro 'f'.\n", "", toString(outputList));
+    }
+}
+
 static void define_invalid_4()
 {
     const char code[] = "#define X(...)\n"
@@ -5546,6 +5582,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(define_invalid_2);
     TEST_CASE(define_invalid_3);
     TEST_CASE(define_invalid_4);
+    TEST_CASE(define_wrong_number_of_arguments);
     TEST_CASE(define_define_1);
     TEST_CASE(define_define_2);
     TEST_CASE(define_define_3);
