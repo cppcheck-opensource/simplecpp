@@ -1352,13 +1352,6 @@ static bool isAnonymousReferenceParameter(const simplecpp::Token *tok)
     return false;
 }
 
-/** Append the next token to tok, and delete the next token */
-static void combineWithNext(simplecpp::TokenList &tokens, simplecpp::Token *tok)
-{
-    tok->setstr(tok->str() + tok->next->str());
-    tokens.deleteToken(tok->next);
-}
-
 void simplecpp::TokenList::combineOperators()
 {
     std::stack<bool, std::vector<bool>> executableScope{{false}};
@@ -1370,19 +1363,24 @@ void simplecpp::TokenList::combineOperators()
             // ellipsis ...
             if (tok->next && tok->next->op == '.' && tok->next->location.col == (tok->location.col + 1) &&
                 tok->next->next && tok->next->next->op == '.' && tok->next->next->location.col == (tok->location.col + 2)) {
-                combineWithNext(*this, tok);
-                combineWithNext(*this, tok);
+                tok->setstr("...");
+                deleteToken(tok->next);
+                deleteToken(tok->next);
                 continue;
             }
             // float literals..
             if (tok->previous && tok->previous->number && sameline(tok->previous, tok) && tok->previous->str().find_first_of("._") == std::string::npos) {
                 tok->setstr(tok->previous->str() + '.');
                 deleteToken(tok->previous);
-                if (sameline(tok, tok->next) && (isFloatSuffix(tok->next) || (tok->next && tok->next->startsWithOneOf("AaBbCcDdEeFfPp") && !isAlternativeAndBitandBitor(tok->next))))
-                    combineWithNext(*this, tok);
+                if (sameline(tok, tok->next) && (isFloatSuffix(tok->next) || (tok->next && tok->next->startsWithOneOf("AaBbCcDdEeFfPp") && !isAlternativeAndBitandBitor(tok->next)))) {
+                    tok->setstr(tok->str() + tok->next->str());
+                    deleteToken(tok->next);
+                }
             }
-            if (tok->next && tok->next->number)
-                combineWithNext(*this, tok);
+            if (tok->next && tok->next->number) {
+                tok->setstr(tok->str() + tok->next->str());
+                deleteToken(tok->next);
+            }
         }
         // match: [0-9.]+E [+-] [0-9]+
         const char lastChar = tok->str()[tok->str().size() - 1];
@@ -1390,8 +1388,9 @@ void simplecpp::TokenList::combineOperators()
             ((!isHex(tok->str()) && (lastChar == 'E' || lastChar == 'e')) ||
              (isHex(tok->str()) && (lastChar == 'P' || lastChar == 'p'))) &&
             tok->next && tok->next->isOneOf("+-") && tok->next->next && tok->next->next->number) {
-            combineWithNext(*this, tok);
-            combineWithNext(*this, tok);
+            tok->setstr(tok->str() + tok->next->op + tok->next->next->str());
+            deleteToken(tok->next);
+            deleteToken(tok->next);
         }
 
         if (tok->op == '\0' || !tok->next || tok->next->op == '\0')
@@ -1406,17 +1405,23 @@ void simplecpp::TokenList::combineOperators()
             // void f(x&=2)
             if (tok->op == '&' && !executableScope.top() && isAnonymousReferenceParameter(tok))
                 continue;
-            combineWithNext(*this, tok);
+            tok->setstr(tok->str() + "=");
+            deleteToken(tok->next);
         } else if ((tok->op == '|' || tok->op == '&') && tok->op == tok->next->op) {
-            combineWithNext(*this, tok);
+            tok->setstr(tok->str() + tok->next->str());
+            deleteToken(tok->next);
         } else if (tok->op == ':' && tok->next->op == ':') {
-            combineWithNext(*this, tok);
+            tok->setstr(tok->str() + tok->next->str());
+            deleteToken(tok->next);
         } else if (tok->op == '-' && tok->next->op == '>') {
-            combineWithNext(*this, tok);
+            tok->setstr(tok->str() + tok->next->str());
+            deleteToken(tok->next);
         } else if ((tok->op == '<' || tok->op == '>') && tok->op == tok->next->op) {
-            combineWithNext(*this, tok);
+            tok->setstr(tok->str() + tok->next->str());
+            deleteToken(tok->next);
             if (tok->next && tok->next->op == '=' && tok->next->next && tok->next->next->op != '=') {
-                combineWithNext(*this, tok);
+                tok->setstr(tok->str() + tok->next->str());
+                deleteToken(tok->next);
             }
         } else if ((tok->op == '+' || tok->op == '-') && tok->op == tok->next->op) {
             if (tok->location.col + 1U != tok->next->location.col)
@@ -1425,7 +1430,8 @@ void simplecpp::TokenList::combineOperators()
                 continue;
             if (tok->next->next && tok->next->next->number)
                 continue;
-            combineWithNext(*this, tok);
+            tok->setstr(tok->str() + tok->next->str());
+            deleteToken(tok->next);
         }
     }
 }
