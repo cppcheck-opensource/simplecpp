@@ -4710,7 +4710,6 @@ static void tokenMacro3()
 
 static void tokenMacro4()
 {
-    HIDESET_EXPANSION_TODO(); // Token::macro and location rules
     const char code[] = "#define A B\n"
                         "#define B 1\n"
                         "A";
@@ -4749,7 +4748,6 @@ static void tokenMacro7()
 
 static void tokenMacro8()
 {
-    HIDESET_EXPANSION_TODO(); // Token::macro and location rules
     // the call g(2) is completed with tokens after the expansion of f.
     // The tokens get the location of the ( and the macro g
     const char code[] = "#define f g\n"
@@ -4762,7 +4760,6 @@ static void tokenMacro8()
 
 static void tokenMacro9()
 {
-    HIDESET_EXPANSION_TODO(); // Token::macro and location rules
     // the arguments of g( come after the expansion of f
     const char code[] = "#define g(x) x+1\n"
                         "#define f g(\n"
@@ -4774,7 +4771,6 @@ static void tokenMacro9()
 
 static void tokenMacro10()
 {
-    HIDESET_EXPANSION_TODO(); // Token::macro and location rules
     // the results of # and ## have no macro name
     const char code[] = "#define str(x) #x\n"
                         "#define cat(a,b) a##b\n"

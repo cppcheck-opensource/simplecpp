@@ -3100,6 +3100,13 @@ namespace simplecpp {
             std::vector<TokenList> expandedArguments;
             /** there is whitespace after the call */
             bool whitespaceAfter{};
+            /**
+             * The object-like macro that the whole call comes from, or empty. All tokens
+             * of the expansion get this as Token::macro.
+             */
+            TokenString owner;
+            /** The location of the expansion */
+            Location location;
         };
 
         /** Expand the pending tokens of the input. Source tokens are only read for macro arguments. */
@@ -3122,6 +3129,7 @@ namespace simplecpp {
                 }
 
                 macro.usageList.emplace_back(loc);
+                Location * const usage = &macro.usageList.back();
                 if (macro.expandBuiltin(output, loc, tok)) {
                     delete tok;
                     continue;
@@ -3133,8 +3141,13 @@ namespace simplecpp {
                     output.push_back(tok);
                     continue;
                 }
+                // the macro is used at the location of the call
+                *usage = call.location;
                 TokenList result(files);
+                const Location callerLoc = loc;
+                loc = call.location;
                 substitute(result, macro, call);
+                loc = callerLoc;
                 input.pushFront(result);
             }
         }
@@ -3149,9 +3162,11 @@ namespace simplecpp {
          * @throws wrongNumberOfParameters if a function-like macro has the wrong number of arguments
          */
         bool readMacroCall(MacroCall &call, const Macro &macro, Token *nameTok, Input &input) {
+            call.location = loc;
             if (!macro.functionLike()) {
                 call.hideSet = nameTok->hideSet();
                 call.whitespaceAfter = nameTok->whitespaceahead;
+                call.owner = objectLikeOwner(nameTok, nameTok);
                 delete nameTok;
             } else {
                 TokenList tokens(files);
@@ -3164,6 +3179,14 @@ namespace simplecpp {
                 }
                 delete nameTok;
                 const std::vector<const Token *> delimiters = macro.getMacroParameters(tokens.cfront(), false);
+                call.owner = objectLikeOwner(tokens.cfront(), delimiters.back());
+                // the location is the first token in the call that is not from a macro expansion
+                for (const Token *t = tokens.cfront(); t; t = t->next) {
+                    if (t->macro.empty()) {
+                        call.location = t->location;
+                        break;
+                    }
+                }
                 // the name and the ) have the hide sets of the macro calls that this call
                 // was produced by, the arguments are not affected by them
                 const std::set<TokenString> &hs1 = tokens.cfront()->hideSet();
@@ -3175,6 +3198,17 @@ namespace simplecpp {
             }
             call.hideSet.insert(macro.name());
             return true;
+        }
+
+        /**
+         * If the first and last token of a macro call come from the replacement list of
+         * an object-like macro, return the name of that macro.
+         */
+        TokenString objectLikeOwner(const Token *first, const Token *last) const {
+            if (first->macro.empty() || first->macro != last->macro)
+                return TokenString();
+            const MacroMap::const_iterator it = macros.find(first->macro);
+            return (it != macros.end() && !it->second.functionLike()) ? first->macro : TokenString();
         }
 
         /** Read "( ... )" after the macro name in call; false if there is no ) */
@@ -3267,7 +3301,7 @@ namespace simplecpp {
             Macro::checkUniversalCharacterPaste(hashHash->location, macro.name(), A, strAB);
             A->setstr(strAB);
             A->whitespaceahead = B->whitespaceahead;
-            A->macro = macro.name();
+            A->macro.clear();
             operand.deleteToken(operand.front());
             result.takeTokens(operand);
         }
@@ -3353,13 +3387,13 @@ namespace simplecpp {
                 tok = next;
                 TokenList content(files);
                 getVaOpt(content, macro, tok, call);
-                operand.push_back(newToken(stringify(content, loc, macro.name(), outputList), macro, tok->whitespaceahead));
+                operand.push_back(new Token(stringify(content, loc, macro.name(), outputList), loc, tok->whitespaceahead));
                 return true;
             }
             const unsigned int argnr = getParameter(macro, next);
             if (argnr >= call.arguments.size())
                 return false;
-            operand.push_back(newToken(stringify(call.arguments[argnr], loc, macro.name(), outputList), macro, next->whitespaceahead));
+            operand.push_back(new Token(stringify(call.arguments[argnr], loc, macro.name(), outputList), loc, next->whitespaceahead));
             tok = next;
             return true;
         }
@@ -3447,6 +3481,8 @@ namespace simplecpp {
             for (Token *tok = result.front(); tok; tok = tok->next) {
                 tok->location = loc;
                 tok->addToHideSet(call.hideSet);
+                if (!call.owner.empty())
+                    tok->macro = call.owner;
             }
             // whitespace at the end of the replacement list does not count, the
             // expansion is followed by the whitespace after the macro call
