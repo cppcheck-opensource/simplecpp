@@ -1911,6 +1911,14 @@ static void hashMacroTrailingWhitespace()
                   "\"a b\"", preprocess(code, dui));
 }
 
+static void hashCombinedOperator()
+{
+    // the whitespace after an operator of two characters is kept
+    const char code[] = "#define str(x) #x\n"
+                        "str(a == 0) str(a -> b) str(x... y)\n";
+    ASSERT_EQUALS("\n\"a == 0\" \"a -> b\" \"x... y\"", preprocess(code));
+}
+
 static void hashEscapeTrailingBackslash()
 {
     // an odd number of trailing backslashes would escape the closing quote,
@@ -2427,38 +2435,22 @@ static void macro_c11_example4() // C11 6.10.3.5 EXAMPLE 4
     // the comments are removed before preprocessing, like cppcheck and the simplecpp program do
     simplecpp::DUI dui;
     dui.removeComments = true;
-    // TODO: the space before == is lost after the comment and newline in the # argument
-    TODO_ASSERT_EQUALS("\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "printf ( \"x\" \"1\" \"= %d, x\" \"2\" \"= %s\" , x1 , x2 ) ;\n"
-                       "fputs ( \"strncmp(\\\"abc\\\\0d\\\", \\\"abc\\\", '\\\\4') == 0\"\n"
-                       "\": @\\n\" , s ) ;\n"
-                       "\"vers2.h\"\n"
-                       "\"hello\" ;\n"
-                       "\"hello\" \", world\"",
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "printf ( \"x\" \"1\" \"= %d, x\" \"2\" \"= %s\" , x1 , x2 ) ;\n"
-                       "fputs ( \"strncmp(\\\"abc\\\\0d\\\", \\\"abc\\\", '\\\\4') ==0\"\n"
-                       "\": @\\n\" , s ) ;\n"
-                       "\"vers2.h\"\n"
-                       "\"hello\" ;\n"
-                       "\"hello\" \", world\"",
-                       preprocess(code, dui));
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "printf ( \"x\" \"1\" \"= %d, x\" \"2\" \"= %s\" , x1 , x2 ) ;\n"
+                  "fputs ( \"strncmp(\\\"abc\\\\0d\\\", \\\"abc\\\", '\\\\4') == 0\"\n"
+                  "\": @\\n\" , s ) ;\n"
+                  "\"vers2.h\"\n"
+                  "\"hello\" ;\n"
+                  "\"hello\" \", world\"",
+                  preprocess(code, dui));
 }
 
 static void macro_c11_example5() // C11 6.10.3.5 EXAMPLE 5
@@ -5660,6 +5652,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(hashEscape);
     TEST_CASE(hashComment);
     TEST_CASE(hashMacroTrailingWhitespace);
+    TEST_CASE(hashCombinedOperator);
     TEST_CASE(hashEscapeTrailingBackslash);
     TEST_CASE(hashhash1);
     TEST_CASE(hashhash2);

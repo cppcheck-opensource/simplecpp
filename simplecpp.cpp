@@ -1364,7 +1364,9 @@ void simplecpp::TokenList::combineOperators()
             if (tok->next && tok->next->op == '.' && tok->next->location.col == (tok->location.col + 1) &&
                 tok->next->next && tok->next->next->op == '.' && tok->next->next->location.col == (tok->location.col + 2)) {
                 tok->setstr("...");
+                tok->whitespaceahead = tok->next->whitespaceahead;
                 deleteToken(tok->next);
+                tok->whitespaceahead = tok->next->whitespaceahead;
                 deleteToken(tok->next);
                 continue;
             }
@@ -1374,11 +1376,13 @@ void simplecpp::TokenList::combineOperators()
                 deleteToken(tok->previous);
                 if (sameline(tok, tok->next) && (isFloatSuffix(tok->next) || (tok->next && tok->next->startsWithOneOf("AaBbCcDdEeFfPp") && !isAlternativeAndBitandBitor(tok->next)))) {
                     tok->setstr(tok->str() + tok->next->str());
+                    tok->whitespaceahead = tok->next->whitespaceahead;
                     deleteToken(tok->next);
                 }
             }
             if (tok->next && tok->next->number) {
                 tok->setstr(tok->str() + tok->next->str());
+                tok->whitespaceahead = tok->next->whitespaceahead;
                 deleteToken(tok->next);
             }
         }
@@ -1389,7 +1393,9 @@ void simplecpp::TokenList::combineOperators()
              (isHex(tok->str()) && (lastChar == 'P' || lastChar == 'p'))) &&
             tok->next && tok->next->isOneOf("+-") && tok->next->next && tok->next->next->number) {
             tok->setstr(tok->str() + tok->next->op + tok->next->next->str());
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
         }
 
@@ -1406,21 +1412,27 @@ void simplecpp::TokenList::combineOperators()
             if (tok->op == '&' && !executableScope.top() && isAnonymousReferenceParameter(tok))
                 continue;
             tok->setstr(tok->str() + "=");
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
         } else if ((tok->op == '|' || tok->op == '&') && tok->op == tok->next->op) {
             tok->setstr(tok->str() + tok->next->str());
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
         } else if (tok->op == ':' && tok->next->op == ':') {
             tok->setstr(tok->str() + tok->next->str());
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
         } else if (tok->op == '-' && tok->next->op == '>') {
             tok->setstr(tok->str() + tok->next->str());
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
         } else if ((tok->op == '<' || tok->op == '>') && tok->op == tok->next->op) {
             tok->setstr(tok->str() + tok->next->str());
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
             if (tok->next && tok->next->op == '=' && tok->next->next && tok->next->next->op != '=') {
                 tok->setstr(tok->str() + tok->next->str());
+                tok->whitespaceahead = tok->next->whitespaceahead;
                 deleteToken(tok->next);
             }
         } else if ((tok->op == '+' || tok->op == '-') && tok->op == tok->next->op) {
@@ -1431,6 +1443,7 @@ void simplecpp::TokenList::combineOperators()
             if (tok->next->next && tok->next->next->number)
                 continue;
             tok->setstr(tok->str() + tok->next->str());
+            tok->whitespaceahead = tok->next->whitespaceahead;
             deleteToken(tok->next);
         }
     }
