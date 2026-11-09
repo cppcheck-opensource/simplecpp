@@ -1919,6 +1919,34 @@ namespace simplecpp {
         }
 
         /**
+         * Copy a macro call "NAME( ... )" to a tokenlist with no line breaks:
+         * all tokens get the location of the name.
+         * @param dest    destination tokenlist
+         * @param nameTok the macro name, followed by '('
+         * @return the token after the ')', or nullptr if the call is not terminated
+         * @throws invalidDirectiveAsMacroParameter if there is a preprocessor directive in the arguments
+         */
+        static const Token *copyMacroCall(TokenList &dest, const Token *nameTok) {
+            const Location &loc = nameTok->location;
+            dest.push_back(new Token(nameTok->str(), loc, nameTok->whitespaceahead));
+            const Token *tok = nameTok->next;
+            dest.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
+            tok = tok->next;
+            int par = 1;
+            while (tok && par > 0) {
+                if (tok->op == '(')
+                    ++par;
+                else if (tok->op == ')')
+                    --par;
+                else if (tok->op == '#' && !sameline(tok->previous, tok))
+                    throw invalidDirectiveAsMacroParameter(tok->location);
+                dest.push_back(new Token(tok->str(), loc, tok->whitespaceahead));
+                tok = tok->next;
+            }
+            return tok;
+        }
+
+        /**
          * Expand macro. This will recursively expand inner macros.
          * @param output     destination tokenlist
          * @param rawtok     macro token
@@ -1944,24 +1972,9 @@ namespace simplecpp {
             TokenList output2(inputFiles);
 
             if (functionLike() && rawtok->next && rawtok->next->op == '(') {
-                // Copy macro call to a new tokenlist with no linebreaks
                 const Token * const rawtok1 = rawtok;
                 TokenList rawtokens2(inputFiles);
-                rawtokens2.push_back(new Token(rawtok->str(), rawtok1->location, rawtok->whitespaceahead));
-                rawtok = rawtok->next;
-                rawtokens2.push_back(new Token(rawtok->str(), rawtok1->location, rawtok->whitespaceahead));
-                rawtok = rawtok->next;
-                int par = 1;
-                while (rawtok && par > 0) {
-                    if (rawtok->op == '(')
-                        ++par;
-                    else if (rawtok->op == ')')
-                        --par;
-                    else if (rawtok->op == '#' && !sameline(rawtok->previous, rawtok))
-                        throw invalidDirectiveAsMacroParameter(rawtok->location);
-                    rawtokens2.push_back(new Token(rawtok->str(), rawtok1->location, rawtok->whitespaceahead));
-                    rawtok = rawtok->next;
-                }
+                rawtok = copyMacroCall(rawtokens2, rawtok);
                 if (expand(output2, rawtok1->location, rawtokens2.cfront(), macros, expandedmacros, outputList))
                     rawtok = rawtok1->next;
             } else {
@@ -2293,6 +2306,29 @@ namespace simplecpp {
             return sameline(lpar,tok) ? tok : nullptr;
         }
 
+        /**
+         * Expand the built-in macros __FILE__, __LINE__ and __COUNTER__.
+         * The usage must already be added to usageList, __COUNTER__ is the number of earlier usages.
+         * @param output      destination tokenlist
+         * @param loc         location of the usage
+         * @param nameTokInst the macro name
+         * @return true if the macro is built-in and its value is added to output
+         */
+        bool expandBuiltin(TokenList &output, const Location &loc, const Token *nameTokInst) const {
+            std::string value;
+            if (nameTokInst->str() == "__FILE__")
+                value = '\"' + output.file(loc) + '\"';
+            else if (nameTokInst->str() == "__LINE__")
+                value = toString(loc.line);
+            else if (nameTokInst->str() == "__COUNTER__")
+                value = toString(usageList.size() - 1U);
+            else
+                return false;
+            output.push_back(new Token(value, loc));
+            output.back()->macro = nameTokInst->str();
+            return true;
+        }
+
         const Token * expand(TokenList & output, const Location &loc, const Token * const nameTokInst, const MacroMap &macros, std::set<TokenString> expandedmacros, OutputList *outputList) const {
             expandedmacros.insert(nameTokInst->str());
 
@@ -2302,21 +2338,8 @@ namespace simplecpp {
 
             usageList.emplace_back(loc);
 
-            if (nameTokInst->str() == "__FILE__") {
-                output.push_back(new Token('\"'+output.file(loc)+'\"', loc));
-                output.back()->macro = "__FILE__";
+            if (expandBuiltin(output, loc, nameTokInst))
                 return nameTokInst->next;
-            }
-            if (nameTokInst->str() == "__LINE__") {
-                output.push_back(new Token(toString(loc.line), loc));
-                output.back()->macro = "__LINE__";
-                return nameTokInst->next;
-            }
-            if (nameTokInst->str() == "__COUNTER__") {
-                output.push_back(new Token(toString(usageList.size()-1U), loc));
-                output.back()->macro = "__COUNTER__";
-                return nameTokInst->next;
-            }
 
             const bool calledInDefine = (loc.fileIndex != nameTokInst->location.fileIndex ||
                                          loc.line < nameTokInst->location.line);
@@ -2567,40 +2590,93 @@ namespace simplecpp {
                 return recursiveExpandToken(output, temp, loc, tok2, macros, expandedmacros, parametertokens, outputList);
             }
 
-            if (tok->str() == DEFINED) {
-                const Token * const tok2 = tok->next;
-                const Token * const tok3 = tok2 ? tok2->next : nullptr;
-                const Token * const tok4 = tok3 ? tok3->next : nullptr;
-                const Token *defToken = nullptr;
-                const Token *lastToken = nullptr;
-                if (sameline(tok, tok4) && tok2->op == '(' && tok3->name && tok4->op == ')') {
-                    defToken = tok3;
-                    lastToken = tok4;
-                } else if (sameline(tok,tok2) && tok2->name) {
-                    defToken = lastToken = tok2;
-                }
-                if (defToken) {
-                    std::string macroName = defToken->str();
-                    if (defToken->next && defToken->next->op == '#' && defToken->next->next && defToken->next->next->op == '#' && defToken->next->next->next && defToken->next->next->next->name && sameline(defToken,defToken->next->next->next)) {
-                        TokenList temp(files);
-                        if (expandArg(temp, defToken, parametertokens))
-                            macroName = temp.cback()->str();
-                        if (expandArg(temp, defToken->next->next->next, parametertokens))
-                            macroName += temp.cback() ? temp.cback()->str() : "";
-                        else
-                            macroName += defToken->next->next->next->str();
-                        lastToken = defToken->next->next->next;
-                    }
-                    const bool def = (macros.find(macroName) != macros.end());
-                    output.push_back(newMacroToken(def ? "1" : "0", loc, true));
-                    return lastToken->next;
-                }
-            }
+            const Token *next = nullptr;
+            if (tok->str() == DEFINED && expandDefined(output, loc, tok, macros, parametertokens, next))
+                return next;
 
             output.push_back(newMacroToken(tok->str(), loc, true, tok));
             if (it != macros.end())
                 output.back()->markExpandedFrom(&it->second);
             return tok->next;
+        }
+
+        /**
+         * Find the operand of "defined" in a replacement list: "defined X", "defined(X)" or "defined X ## Y".
+         * @param tok    the "defined" token
+         * @param first  output: X
+         * @param second output: Y for "X ## Y", otherwise nullptr
+         * @param last   output: the last token of the operand
+         * @return false if there is no operand
+         */
+        static bool findDefinedOperand(const Token *tok, const Token *&first, const Token *&second, const Token *&last) {
+            const Token * const tok2 = tok->next;
+            const Token * const tok3 = tok2 ? tok2->next : nullptr;
+            const Token * const tok4 = tok3 ? tok3->next : nullptr;
+            first = last = second = nullptr;
+            if (sameline(tok, tok4) && tok2->op == '(' && tok3->name && tok4->op == ')') {
+                first = tok3;
+                last = tok4;
+            } else if (sameline(tok,tok2) && tok2->name) {
+                first = last = tok2;
+            }
+            if (!first)
+                return false;
+            if (first->next && first->next->op == '#' && first->next->next && first->next->next->op == '#' && first->next->next->next && first->next->next->next->name && sameline(first,first->next->next->next)) {
+                second = first->next->next->next;
+                last = second;
+            }
+            return true;
+        }
+
+        /**
+         * The name of the macro that "defined" checks.
+         * @param first   X in "defined X"
+         * @param second  Y in "defined X ## Y", or nullptr
+         * @param argText for "X ## Y": gives the text of a parameter, and returns false if the token is not a parameter
+         */
+        template<class ArgText>
+        static std::string definedMacroName(const Token *first, const Token *second, ArgText argText) {
+            std::string macroName = first->str();
+            if (second) {
+                std::string text;
+                if (argText(first, text))
+                    macroName = text;
+                if (argText(second, text))
+                    macroName += text;
+                else
+                    macroName += second->str();
+            }
+            return macroName;
+        }
+
+        /**
+         * Expand "defined X" or "defined(X)" in the replacement list to 1 or 0.
+         * The operand can be a parameter, or two names pasted with ##.
+         * @param output          destination tokenlist
+         * @param loc             location for the result
+         * @param tok             the "defined" token
+         * @param macros          all macros
+         * @param parametertokens arguments of this macro call
+         * @param next            output: the token after the operand
+         * @return false if there is no operand, then nothing is added to output
+         */
+        bool expandDefined(TokenList &output, const Location &loc, const Token *tok, const MacroMap &macros, const std::vector<const Token*> &parametertokens, const Token *&next) const {
+            const Token *first;
+            const Token *second;
+            const Token *last;
+            if (!findDefinedOperand(tok, first, second, last))
+                return false;
+            TokenList temp(files);
+            const std::string macroName = definedMacroName(first, second, [&](const Token *argtok, std::string &text) {
+                if (!expandArg(temp, argtok, parametertokens))
+                    return false;
+                text = temp.cback() ? temp.cback()->str() : "";
+                return true;
+            });
+            const bool def = (macros.find(macroName) != macros.end());
+            output.push_back(newMacroToken(def ? "1" : "0", loc, true));
+            next = last->next;
+            return true;
         }
 
         bool expandArg(TokenList &output, const Token *tok, const std::vector<const Token*> &parametertokens) const {
