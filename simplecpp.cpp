@@ -733,6 +733,41 @@ static std::string stringifyToken(const std::string &str)
     return ret;
 }
 
+/**
+ * The result of the # operator: the tokens as a string literal (C 6.10.3.2).
+ * The tokens are separated by a space where there was whitespace between them.
+ * @param tokens     the argument of #, not macro expanded
+ * @param loc        location for the warning
+ * @param macroName  the macro that is expanded, for the warning
+ * @param outputList if not null, a warning is added when a final backslash is dropped
+ * @return the string literal, including the quotes
+ */
+static std::string stringify(const simplecpp::TokenList &tokens, const simplecpp::Location &loc, const std::string &macroName, simplecpp::OutputList *outputList)
+{
+    std::string str;
+    for (const simplecpp::Token *tok = tokens.cfront(), *next; tok; tok = next) {
+        next = tok->next;
+        str += stringifyToken(tok->str());
+        if (next && tok->whitespaceahead)
+            str += ' ';
+    }
+    // An odd number of trailing backslashes would escape the closing quote and
+    // yield an unterminated string literal (undefined behavior, C 6.10.3.2p2).
+    // Drop the final backslash, as gcc and clang do.
+    std::size_t trailing = 0;
+    while (trailing < str.size() && str[str.size() - 1U - trailing] == '\\')
+        ++trailing;
+    if (trailing % 2U == 1U) {
+        str.pop_back();
+        if (outputList) {
+            outputList->emplace_back(simplecpp::Output::PORTABILITY_STRINGIFY, loc,
+                                     "Invalid string literal when expanding \'" + macroName + "\', ignoring final \'\\\'. "
+                                     "Undefined behavior according to C standard chapter 6.10.3.2, paragraph 2.");
+        }
+    }
+    return '\"' + str + '\"';
+}
+
 void simplecpp::TokenList::lineDirective(unsigned int fileIndex_, unsigned int line, Location &location)
 {
     if (fileIndex_ != location.fileIndex || line >= location.line) {
@@ -1317,6 +1352,13 @@ static bool isAnonymousReferenceParameter(const simplecpp::Token *tok)
     return false;
 }
 
+/** Append the next token to tok, and delete the next token */
+static void combineWithNext(simplecpp::TokenList &tokens, simplecpp::Token *tok)
+{
+    tok->setstr(tok->str() + tok->next->str());
+    tokens.deleteToken(tok->next);
+}
+
 void simplecpp::TokenList::combineOperators()
 {
     std::stack<bool, std::vector<bool>> executableScope{{false}};
@@ -1328,24 +1370,19 @@ void simplecpp::TokenList::combineOperators()
             // ellipsis ...
             if (tok->next && tok->next->op == '.' && tok->next->location.col == (tok->location.col + 1) &&
                 tok->next->next && tok->next->next->op == '.' && tok->next->next->location.col == (tok->location.col + 2)) {
-                tok->setstr("...");
-                deleteToken(tok->next);
-                deleteToken(tok->next);
+                combineWithNext(*this, tok);
+                combineWithNext(*this, tok);
                 continue;
             }
             // float literals..
             if (tok->previous && tok->previous->number && sameline(tok->previous, tok) && tok->previous->str().find_first_of("._") == std::string::npos) {
                 tok->setstr(tok->previous->str() + '.');
                 deleteToken(tok->previous);
-                if (sameline(tok, tok->next) && (isFloatSuffix(tok->next) || (tok->next && tok->next->startsWithOneOf("AaBbCcDdEeFfPp") && !isAlternativeAndBitandBitor(tok->next)))) {
-                    tok->setstr(tok->str() + tok->next->str());
-                    deleteToken(tok->next);
-                }
+                if (sameline(tok, tok->next) && (isFloatSuffix(tok->next) || (tok->next && tok->next->startsWithOneOf("AaBbCcDdEeFfPp") && !isAlternativeAndBitandBitor(tok->next))))
+                    combineWithNext(*this, tok);
             }
-            if (tok->next && tok->next->number) {
-                tok->setstr(tok->str() + tok->next->str());
-                deleteToken(tok->next);
-            }
+            if (tok->next && tok->next->number)
+                combineWithNext(*this, tok);
         }
         // match: [0-9.]+E [+-] [0-9]+
         const char lastChar = tok->str()[tok->str().size() - 1];
@@ -1353,9 +1390,8 @@ void simplecpp::TokenList::combineOperators()
             ((!isHex(tok->str()) && (lastChar == 'E' || lastChar == 'e')) ||
              (isHex(tok->str()) && (lastChar == 'P' || lastChar == 'p'))) &&
             tok->next && tok->next->isOneOf("+-") && tok->next->next && tok->next->next->number) {
-            tok->setstr(tok->str() + tok->next->op + tok->next->next->str());
-            deleteToken(tok->next);
-            deleteToken(tok->next);
+            combineWithNext(*this, tok);
+            combineWithNext(*this, tok);
         }
 
         if (tok->op == '\0' || !tok->next || tok->next->op == '\0')
@@ -1370,23 +1406,17 @@ void simplecpp::TokenList::combineOperators()
             // void f(x&=2)
             if (tok->op == '&' && !executableScope.top() && isAnonymousReferenceParameter(tok))
                 continue;
-            tok->setstr(tok->str() + "=");
-            deleteToken(tok->next);
+            combineWithNext(*this, tok);
         } else if ((tok->op == '|' || tok->op == '&') && tok->op == tok->next->op) {
-            tok->setstr(tok->str() + tok->next->str());
-            deleteToken(tok->next);
+            combineWithNext(*this, tok);
         } else if (tok->op == ':' && tok->next->op == ':') {
-            tok->setstr(tok->str() + tok->next->str());
-            deleteToken(tok->next);
+            combineWithNext(*this, tok);
         } else if (tok->op == '-' && tok->next->op == '>') {
-            tok->setstr(tok->str() + tok->next->str());
-            deleteToken(tok->next);
+            combineWithNext(*this, tok);
         } else if ((tok->op == '<' || tok->op == '>') && tok->op == tok->next->op) {
-            tok->setstr(tok->str() + tok->next->str());
-            deleteToken(tok->next);
+            combineWithNext(*this, tok);
             if (tok->next && tok->next->op == '=' && tok->next->next && tok->next->next->op != '=') {
-                tok->setstr(tok->str() + tok->next->str());
-                deleteToken(tok->next);
+                combineWithNext(*this, tok);
             }
         } else if ((tok->op == '+' || tok->op == '-') && tok->op == tok->next->op) {
             if (tok->location.col + 1U != tok->next->location.col)
@@ -1395,8 +1425,7 @@ void simplecpp::TokenList::combineOperators()
                 continue;
             if (tok->next->next && tok->next->next->number)
                 continue;
-            tok->setstr(tok->str() + tok->next->str());
-            deleteToken(tok->next);
+            combineWithNext(*this, tok);
         }
     }
 }
@@ -2634,28 +2663,7 @@ namespace simplecpp {
             TokenList tokenListHash(files);
             const MacroMap macros2; // temporarily bypass macro expansion
             tok = expandToken(tokenListHash, loc, tok->next, macros2, expandedmacros, parametertokens, outputList);
-            std::string str;
-            for (const Token *hashtok = tokenListHash.cfront(), *next; hashtok; hashtok = next) {
-                next = hashtok->next;
-                str += stringifyToken(hashtok->str());
-                if (next && hashtok->whitespaceahead)
-                    str += ' ';
-            }
-            // An odd number of trailing backslashes would escape the closing quote and
-            // yield an unterminated string literal (undefined behavior, C 6.10.3.2p2).
-            // Drop the final backslash, as gcc and clang do.
-            std::size_t trailing = 0;
-            while (trailing < str.size() && str[str.size() - 1U - trailing] == '\\')
-                ++trailing;
-            if (trailing % 2U == 1U) {
-                str.pop_back();
-                if (outputList) {
-                    outputList->emplace_back(Output::PORTABILITY_STRINGIFY, loc,
-                                             "Invalid string literal when expanding \'" + name() + "\', ignoring final \'\\\'. "
-                                             "Undefined behavior according to C standard chapter 6.10.3.2, paragraph 2.");
-                }
-            }
-            output.push_back(newMacroToken('\"' + str + '\"', loc, isReplaced(expandedmacros)));
+            output.push_back(newMacroToken(stringify(tokenListHash, loc, name(), outputList), loc, isReplaced(expandedmacros)));
             return tok;
         }
 
@@ -2679,20 +2687,9 @@ namespace simplecpp {
                 throw invalidHashHash::unexpectedNewline(tok->location, name());
 
             const bool canBeConcatenatedStringOrChar = isStringLiteral(A->str()) || isCharLiteral(A->str());
-            // A is a punctuator; the result is checked when B has been expanded
-            const bool punctuatorA = (!A->name && !A->number && !A->str().empty() && !canBeConcatenatedStringOrChar);
 
             const Token * const B = tok->next->next;
-            if (!punctuatorA) {
-                if (!B->name && !B->number && B->op && !B->isOneOf("#="))
-                    throw invalidHashHash::unexpectedToken(tok->location, name(), B);
-                if (B->op == '=')
-                    throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
-            }
-
-            // Superficial check; more in-depth would in theory be possible _after_ expandArg
-            if (canBeConcatenatedStringOrChar && (B->number || !B->name))
-                throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
+            checkHashHashOperands(tok->location, name(), A, B);
 
             TokenList tokensB(files);
             const Token *nextTok = B->next;
@@ -2721,24 +2718,16 @@ namespace simplecpp {
                         strAB = ",";
                     }
                     else {
-                        if (punctuatorA && !isValidPunctuatorPaste(A->str() + tokensB.cfront()->str()))
-                            throw invalidHashHash::cannotCombine(tok->location, name(), A, tokensB.cfront());
+                        checkPunctuatorPaste(tok->location, name(), A, tokensB.cfront());
                         strAB = A->str() + tokensB.cfront()->str();
                         tokensB.deleteToken(tokensB.front());
                     }
                 } else {
-                    if (punctuatorA && !isValidPunctuatorPaste(A->str() + B->str()))
-                        throw invalidHashHash::cannotCombine(tok->location, name(), A, B);
+                    checkPunctuatorPaste(tok->location, name(), A, B);
                     strAB = A->str() + B->str();
                 }
 
-                // producing universal character is undefined behavior
-                if (A->previous && A->previous->str() == "\\") {
-                    if (strAB[0] == 'u' && strAB.size() == 5)
-                        throw invalidHashHash::universalCharacterUB(tok->location, name(), A, strAB);
-                    if (strAB[0] == 'U' && strAB.size() == 9)
-                        throw invalidHashHash::universalCharacterUB(tok->location, name(), A, strAB);
-                }
+                checkUniversalCharacterPaste(tok->location, name(), A, strAB);
 
                 if (varargs && tokensB.empty() && tok->previous->str() == ",") {
                     output.deleteToken(A);
@@ -2778,6 +2767,60 @@ namespace simplecpp {
             }
 
             return nextTok;
+        }
+
+        /** A is a punctuator, not a name, number or literal. Pasting it is checked after B is expanded. */
+        static bool isPunctuatorOperand(const Token *A) {
+            return !A->name && !A->number && !A->str().empty() && !isStringLiteral(A->str()) && !isCharLiteral(A->str());
+        }
+
+        /**
+         * Check the operands of A ## B before B is expanded.
+         * @param loc       the location of the ##
+         * @param macroName the macro that is expanded
+         * @param A         the token before ##, already expanded
+         * @param B         the token after ## in the macro definition
+         * @throws invalidHashHash if A and B can not be pasted
+         */
+        static void checkHashHashOperands(const Location &loc, const std::string &macroName, const Token *A, const Token *B) {
+            if (!isPunctuatorOperand(A)) {
+                if (!B->name && !B->number && B->op && !B->isOneOf("#="))
+                    throw invalidHashHash::unexpectedToken(loc, macroName, B);
+                if (B->op == '=')
+                    throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+            }
+
+            // Superficial check; more in-depth would in theory be possible _after_ expandArg
+            if ((isStringLiteral(A->str()) || isCharLiteral(A->str())) && (B->number || !B->name))
+                throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+        }
+
+        /**
+         * When A is a punctuator, check that pasting A and B gives a valid token.
+         * @param loc       the location of the ##
+         * @param macroName the macro that is expanded
+         * @param A         the token before ##
+         * @param B         the first token after ##, after expansion
+         * @throws invalidHashHash if the result is not a valid token
+         */
+        static void checkPunctuatorPaste(const Location &loc, const std::string &macroName, const Token *A, const Token *B) {
+            if (isPunctuatorOperand(A) && !isValidPunctuatorPaste(A->str() + B->str()))
+                throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+        }
+
+        /**
+         * Producing a universal character name with ## is undefined behavior.
+         * @param loc       the location of the ##
+         * @param macroName the macro that is expanded
+         * @param A         the token before ##
+         * @param strAB     the pasted text
+         * @throws invalidHashHash if A follows a backslash and strAB is a universal character name
+         */
+        static void checkUniversalCharacterPaste(const Location &loc, const std::string &macroName, const Token *A, const std::string &strAB) {
+            if (!A->previous || A->previous->str() != "\\")
+                return;
+            if ((strAB[0] == 'u' && strAB.size() == 5) || (strAB[0] == 'U' && strAB.size() == 9))
+                throw invalidHashHash::universalCharacterUB(loc, macroName, A, strAB);
         }
 
         static bool isReplaced(const std::set<std::string> &expandedmacros) {
