@@ -1179,6 +1179,38 @@ static void define28()
                   "\n"
                   "\n"
                   "[ ( ) 1 ] [ 1 ] 2 ) [ 1 ] ( 2 ) [ 1 ] < 2 > )", preprocess(code7));
+
+    // the marks that the expansion of an argument leaves do not apply after
+    // it is substituted, also when it is pasted. A call after the macro call
+    // that expands to nothing marks the name before it.
+    const char code8[] = "#define EMPTY()\n"
+                         "#define DEFER(id) id EMPTY()\n"
+                         "#define A() 123\n"
+                         "#define G(y) P ## y\n"
+                         "#define F(x) G(x)\n"
+                         "#define H() A EMPTY\n"
+                         "F(1 DEFER(A))() H()() ()\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "P1 123 A ( )", preprocess(code8));
+
+    // a parameter after a trailing macro name is expanded like the other
+    // parameters, also after an object-like macro. When it does not start the
+    // call, the name at the end of its expansion can be called.
+    const char code9[] = "#define O F\n"
+                         "#define F(x) [x]\n"
+                         "#define M(a) O a\n"
+                         "#define N(f, g, x) f g x\n"
+                         "M((O)) N(F, F, (1))\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "[ F ] F [ 1 ]", preprocess(code9));
 }
 
 
