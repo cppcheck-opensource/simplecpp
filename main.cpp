@@ -154,8 +154,8 @@ int main(int argc, char **argv)
                 }
                 break;
             case 'h':
-                if (std::strcmp(arg, "-hideset-expansion")==0) {
-                    dui.hideSetExpansion = true;
+                if (std::strcmp(arg, "-old-expansion")==0) {
+                    dui.oldExpansion = true;
                     found = true;
                 }
                 break;
@@ -193,7 +193,7 @@ int main(int argc, char **argv)
         std::cout << "  -e              Output errors only." << std::endl;
         std::cout << "  -f              Fail when errors were encountered (exitcode 1)." << std::endl;
         std::cout << "  -l              Print lines numbers." << std::endl;
-        std::cout << "  -hideset-expansion  Use the new macro expansion with hide sets (work in progress)." << std::endl;
+        std::cout << "  -old-expansion  Use the old macro expansion (will be removed)." << std::endl;
         return 0;
     }
 

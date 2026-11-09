@@ -3012,7 +3012,7 @@ namespace simplecpp {
 
 namespace simplecpp {
     /**
-     * Macro expansion with hide sets (Prosser's algorithm, used by DUI::hideSetExpansion).
+     * Macro expansion with hide sets (Prosser's algorithm, used by DUI::oldExpansion is not set).
      * Each token has a hide set: the macros that it must not be expanded into.
      * The result of an expansion is pushed back onto the input and scanned again, so a
      * function-like macro whose arguments follow the expansion in the source is found by
@@ -4426,11 +4426,11 @@ static bool preprocessToken(simplecpp::TokenList &output, const simplecpp::Token
     if (it != macros.end()) {
         simplecpp::TokenList value(files);
         try {
-            if (dui.hideSetExpansion) {
+            if (dui.oldExpansion) {
+                tok1 = it->second.expand(value, tok, macros, files, outputList);
+            } else {
                 simplecpp::HideSetExpander expander(macros, files, outputList);
                 tok1 = expander.expand(value, tok);
-            } else {
-                tok1 = it->second.expand(value, tok, macros, files, outputList);
             }
         } catch (const simplecpp::Macro::invalidDirectiveAsMacroParameter &err) {
             if (outputList) {

@@ -286,7 +286,7 @@ namespace simplecpp {
         std::string std;
         bool clearIncludeCache{};
         bool removeComments{}; /** remove comment tokens from included files */
-        bool hideSetExpansion{}; /** use the new macro expansion with hide sets (work in progress) */
+        bool oldExpansion{}; /** use the old macro expansion instead of the one with hide sets (will be removed) */
     };
 
     /** List of tokens. */
