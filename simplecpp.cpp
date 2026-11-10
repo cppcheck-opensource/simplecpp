@@ -2926,9 +2926,9 @@ namespace simplecpp {
                     (quote > 0 && !isStringLiteralPrefix(b.substr(0, quote))))
                     return;
                 const bool isChar = b[quote] == '\'';
-                const bool validPrefix = A->name && quote == 0 && isStringLiteralPrefix(A->str()) &&
-                                         !(isChar && A->str().back() == 'R');
-                if (!validPrefix)
+                const bool rawChar = isChar && A->str().back() == 'R';
+                const bool validPrefix = A->name && quote == 0 && isStringLiteralPrefix(A->str());
+                if (!validPrefix || rawChar)
                     throw invalidHashHash::cannotCombine(loc, macroName, A, B);
             }
         }

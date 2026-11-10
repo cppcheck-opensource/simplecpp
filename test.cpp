@@ -2582,7 +2582,7 @@ static void hashhash_encoding_prefix()
 static void hashhash_invalid_prefixed_literal()
 {
     const char *const codes[] = {"cat(a,L\"s\")", "cat(a,u8\"s\")", "cat(L,L\"s\")", "cat(R,'c')", "cat(u8R,'c')"};
-    for (const char *line : codes) {
+    for (const char *const line : codes) {
         const std::string code = std::string("#define cat(a,b) a##b\n") + line + "\n";
         simplecpp::OutputList outputList;
         ASSERT_EQUALS("", preprocess(code.c_str(), &outputList));
