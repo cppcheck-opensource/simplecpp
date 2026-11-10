@@ -2919,9 +2919,18 @@ namespace simplecpp {
             if (isPunctuatorOperand(A) && !isValidPunctuatorPaste(A->str() + B->str()))
                 throw invalidHashHash::cannotCombine(loc, macroName, A, B);
             // a name or number followed by a literal: only an encoding prefix such as L or u8 is valid
-            if ((A->name || A->number) && (isStringLiteral(B->str()) || isCharLiteral(B->str())) &&
-                !(A->name && isStringLiteralPrefix(A->str())))
-                throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+            if (A->name || A->number) {
+                const std::string &b = B->str();
+                const std::string::size_type quote = b.find_first_of("\"\'");
+                if (quote == std::string::npos || b.size() < quote + 2 || b.back() != b[quote] ||
+                    (quote > 0 && !isStringLiteralPrefix(b.substr(0, quote))))
+                    return;
+                const bool isChar = b[quote] == '\'';
+                const bool validPrefix = A->name && quote == 0 && isStringLiteralPrefix(A->str()) &&
+                                         !(isChar && A->str().back() == 'R');
+                if (!validPrefix)
+                    throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+            }
         }
 
         /**

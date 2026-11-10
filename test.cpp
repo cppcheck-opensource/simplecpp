@@ -2579,6 +2579,17 @@ static void hashhash_encoding_prefix()
     ASSERT_EQUALS("", toString(outputList));
 }
 
+static void hashhash_invalid_prefixed_literal()
+{
+    const char *const codes[] = {"cat(a,L\"s\")", "cat(a,u8\"s\")", "cat(L,L\"s\")", "cat(R,'c')", "cat(u8R,'c')"};
+    for (const char *line : codes) {
+        const std::string code = std::string("#define cat(a,b) a##b\n") + line + "\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess(code.c_str(), &outputList));
+        ASSERT_EQUALS(true, toString(outputList).find("yields an invalid token") != std::string::npos);
+    }
+}
+
 static void hashhash_va_args_unexpected()
 {
     const char code[] =
@@ -5711,6 +5722,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(hashhash_invalid_name_string);
     TEST_CASE(hashhash_invalid_number_string);
     TEST_CASE(hashhash_encoding_prefix);
+    TEST_CASE(hashhash_invalid_prefixed_literal);
     TEST_CASE(hashhash_va_args_unexpected);
 
     // C standard, 5.1.1.2, paragraph 4:
