@@ -55,6 +55,8 @@ skip = ['assembler-with-cpp.c',
         #  'macro_paste_hashhash.c',
         'microsoft-ext.c',
         'normalize-3.c', # gcc has different output \uAC00 vs \U0000AC00 on cygwin/linux
+        'pr58844-1.c', # x######x: gcc gives xx, clang gives x##x
+        'pr58844-2.c', # x######x: gcc gives xx, clang gives x##x
         'pr63831-1.c', # __has_attribute => works differently on cygwin/linux
         'pr63831-2.c', # __has_attribute => works differently on cygwin/linux
         'pr65238-1.c', # __has_attribute => works differently on cygwin/linux
@@ -76,8 +78,6 @@ todo = [
          'macro_expand.c',
          'macro_fn_disable_expand.c',
          'macro_paste_commaext.c',
-         'macro_paste_hard.c',
-         'macro_rescan_varargs.c',
 
          # todo, high priority
          'expr_usual_conversions.c', # condition is true: 4U - 30 >= 0
