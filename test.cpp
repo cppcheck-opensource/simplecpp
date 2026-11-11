@@ -2554,9 +2554,40 @@ static void hashhash_invalid_name_string()
         "#define cat(a,b) a##b\n"
         "cat(a,\"s\")\n";
     simplecpp::OutputList outputList;
-    // TODO: a"s" is not a valid token, gcc reports an error
-    TODO_ASSERT_EQUALS("", "\na\"s\"", preprocess(code, &outputList));
-    TODO_ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'cat', Invalid ## usage when expanding 'cat': Combining 'a' and '\"s\"' yields an invalid token.\n", "", toString(outputList));
+    ASSERT_EQUALS("", preprocess(code, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'cat', Invalid ## usage when expanding 'cat': Combining 'a' and '\"s\"' yields an invalid token.\n", toString(outputList));
+}
+
+static void hashhash_invalid_number_string()
+{
+    const char code[] =
+        "#define cat(a,b) a##b\n"
+        "cat(1,\"s\")\n";
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("", preprocess(code, &outputList));
+    ASSERT_EQUALS("file0,1,syntax_error,failed to expand 'cat', Invalid ## usage when expanding 'cat': Combining '1' and '\"s\"' yields an invalid token.\n", toString(outputList));
+}
+
+static void hashhash_encoding_prefix()
+{
+    const char code[] =
+        "#define cat(a,b) a##b\n"
+        "#define WIDE(s) L ## s\n"
+        "cat(L,\"s\") cat(u8,\"s\") cat(R,\"(x)\") cat(L,'c') WIDE(\"s\")\n";
+    simplecpp::OutputList outputList;
+    ASSERT_EQUALS("\n\nL\"s\" u8\"s\" R\"(x)\" L'c' L\"s\"", preprocess(code, &outputList));
+    ASSERT_EQUALS("", toString(outputList));
+}
+
+static void hashhash_invalid_prefixed_literal()
+{
+    const char *const codes[] = {"cat(a,L\"s\")", "cat(a,u8\"s\")", "cat(L,L\"s\")", "cat(R,'c')", "cat(u8R,'c')"};
+    for (const char *const line : codes) {
+        const std::string code = std::string("#define cat(a,b) a##b\n") + line + "\n";
+        simplecpp::OutputList outputList;
+        ASSERT_EQUALS("", preprocess(code.c_str(), &outputList));
+        ASSERT_EQUALS(true, toString(outputList).find("yields an invalid token") != std::string::npos);
+    }
 }
 
 static void hashhash_va_args_unexpected()
@@ -5689,6 +5720,9 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(hashhash_empty_placemarker);
     TEST_CASE(hashhash_invalid_dotdot);
     TEST_CASE(hashhash_invalid_name_string);
+    TEST_CASE(hashhash_invalid_number_string);
+    TEST_CASE(hashhash_encoding_prefix);
+    TEST_CASE(hashhash_invalid_prefixed_literal);
     TEST_CASE(hashhash_va_args_unexpected);
 
     // C standard, 5.1.1.2, paragraph 4:

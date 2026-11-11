@@ -2831,12 +2831,12 @@ namespace simplecpp {
                         strAB = ",";
                     }
                     else {
-                        checkPunctuatorPaste(tok->location, name(), A, tokensB.cfront());
+                        checkPaste(tok->location, name(), A, tokensB.cfront());
                         strAB = A->str() + tokensB.cfront()->str();
                         tokensB.deleteToken(tokensB.front());
                     }
                 } else {
-                    checkPunctuatorPaste(tok->location, name(), A, B);
+                    checkPaste(tok->location, name(), A, B);
                     strAB = A->str() + B->str();
                 }
 
@@ -2907,16 +2907,30 @@ namespace simplecpp {
         }
 
         /**
-         * When A is a punctuator, check that pasting A and B gives a valid token.
+         * Check that pasting A and B gives a valid token, when A is a punctuator
+         * or B is a string or character literal.
          * @param loc       the location of the ##
          * @param macroName the macro that is expanded
          * @param A         the token before ##
          * @param B         the first token after ##, after expansion
          * @throws invalidHashHash if the result is not a valid token
          */
-        static void checkPunctuatorPaste(const Location &loc, const std::string &macroName, const Token *A, const Token *B) {
+        static void checkPaste(const Location &loc, const std::string &macroName, const Token *A, const Token *B) {
             if (isPunctuatorOperand(A) && !isValidPunctuatorPaste(A->str() + B->str()))
                 throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+            // a name or number followed by a literal: only an encoding prefix such as L or u8 is valid
+            if (A->name || A->number) {
+                const std::string &b = B->str();
+                const std::string::size_type quote = b.find_first_of("\"\'");
+                if (quote == std::string::npos || b.size() < quote + 2 || b.back() != b[quote] ||
+                    (quote > 0 && !isStringLiteralPrefix(b.substr(0, quote))))
+                    return;
+                const bool isChar = b[quote] == '\'';
+                const bool rawChar = isChar && A->str().back() == 'R';
+                const bool validPrefix = A->name && quote == 0 && isStringLiteralPrefix(A->str());
+                if (!validPrefix || rawChar)
+                    throw invalidHashHash::cannotCombine(loc, macroName, A, B);
+            }
         }
 
         /**
