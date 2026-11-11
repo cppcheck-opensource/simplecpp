@@ -165,7 +165,7 @@ namespace simplecpp {
         }
 
         Token(const Token &tok) :
-            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), string(tok.string), mExpandedFrom(tok.mExpandedFrom) {}
+            macro(tok.macro), op(tok.op), comment(tok.comment), name(tok.name), number(tok.number), whitespaceahead(tok.whitespaceahead), location(tok.location), painted(tok.painted), string(tok.string), mExpandedFrom(tok.mExpandedFrom) {}
 
         Token &operator=(const Token &tok) = delete;
 
@@ -192,6 +192,8 @@ namespace simplecpp {
         bool number;
         bool whitespaceahead;
         Location location;
+        /** the macro expander has found that this name must never be expanded (painted blue), it is never cleared */
+        bool painted{};
         Token *previous{};
         Token *next{};
         mutable const Token *nextcond{};
