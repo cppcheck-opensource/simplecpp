@@ -1156,9 +1156,9 @@ static void define_invalid_3()
     const char code[] = "#define R()\n"
                         "R\n";
     simplecpp::OutputList outputList;
-    // TODO: a function-like macro name at the end of the file is not a macro call, gcc outputs R
-    TODO_ASSERT_EQUALS("\nR", "", preprocess(code, &outputList));
-    TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'R', Wrong number of parameters for macro 'R'.\n", toString(outputList));
+    // a function-like macro name at the end of the file is not a macro call, gcc outputs R.
+    ASSERT_EQUALS("\nR", preprocess(code, &outputList));
+    ASSERT_EQUALS("", toString(outputList));
 }
 
 static void define_wrong_number_of_arguments()
@@ -1202,9 +1202,9 @@ static void define_invalid_4()
     const char code[] = "#define X(...)\n"
                         "X\n";
     simplecpp::OutputList outputList;
-    // TODO: a function-like macro name at the end of the file is not a macro call, gcc outputs X
-    TODO_ASSERT_EQUALS("\nX", "", preprocess(code, &outputList));
-    TODO_ASSERT_EQUALS("", "file0,2,syntax_error,failed to expand 'X', Wrong number of parameters for macro 'X'.\n", toString(outputList));
+    // a function-like macro name at the end of the file is not a macro call, gcc outputs X.
+    ASSERT_EQUALS("\nX", preprocess(code, &outputList));
+    ASSERT_EQUALS("", toString(outputList));
 }
 
 static void define_define_1()
@@ -2112,7 +2112,8 @@ static void hashhash10()
 {
     const char code[] = "#define x # #\n"
                         "x";
-    ASSERT_EQUALS("# #", preprocess(code));
+    // a space is added before the #, as gcc and clang do, so the output is not read as a directive.
+    ASSERT_EQUALS("\n # #", preprocess(code));
 }
 
 static void hashFromMacroAtLineStart()
@@ -2120,14 +2121,14 @@ static void hashFromMacroAtLineStart()
     // clang testsuite hash_space.c: a space before the # so that the output is not read as a directive
     const char code[] = "#define HASH #\n"
                         "HASH define foo bar\n";
-    TODO_ASSERT_EQUALS("\n # define foo bar", "#\ndefine foo bar", preprocess(code));
+    ASSERT_EQUALS("\n # define foo bar", preprocess(code));
 }
 
 static void hashhash11()
 {
     const char code[] = "#define x # # #\n"
                         "x";
-    ASSERT_EQUALS("# # #", preprocess(code));
+    ASSERT_EQUALS("\n # # #", preprocess(code));
 }
 
 static void hashhash12()
@@ -2254,7 +2255,8 @@ static void hashhash_string_name()
     // TODO is this correct? clang fails because that's not really a valid thing but gcc seems to accept it
     // see https://gist.github.com/patrickdowling/877a25294f069bf059f3b07f9b5b7039
 
-    ASSERT_EQUALS("\n\n\"string\" LIT ;", preprocess(code));
+    // "string" and LIT are not pasted, so the result is rescanned and LIT is expanded.
+    ASSERT_EQUALS("\n\n\"string\" _literal ;", preprocess(code));
 }
 
 static void hashhashhash_int_literal()
@@ -2380,46 +2382,26 @@ static void macro_c11_example3() // C11 6.10.3.5 EXAMPLE 3
         "(f)^m(m);\n"
         "p() i[q()] = { q(1), r(2,3), r(4,), r(,5), r(,) };\n"
         "char c[2][6] = { str(hello), str() };\n";
-    // TODO: r(,) leaves an empty token
-    TODO_ASSERT_EQUALS("\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
-                       "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
-                       "^ m ( 0 , 1 ) ;\n"
-                       "int i [ ] = { 1 , 23 , 4 , 5 , } ;\n"
-                       "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "\n"
-                       "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
-                       "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
-                       "^ m ( 0 , 1 ) ;\n"
-                       "int i [ ] = { 1 , 23 , 4 , 5 ,  } ;\n"
-                       "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
-                       preprocess(code));
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "f ( 2 * ( y + 1 ) ) + f ( 2 * ( f ( 2 * ( z [ 0 ] ) ) ) ) % f ( 2 * ( 0 ) ) + t ( 1 ) ;\n"
+                  "f ( 2 * ( 2 + ( 3 , 4 ) - 0 , 1 ) ) | f ( 2 * ( ~ 5 ) ) & f ( 2 * ( 0 , 1 ) )\n"
+                  "^ m ( 0 , 1 ) ;\n"
+                  "int i [ ] = { 1 , 23 , 4 , 5 , } ;\n"
+                  "char c [ 2 ] [ 6 ] = { \"hello\" , \"\" } ;",
+                  preprocess(code));
 }
 
 static void macro_c11_example4() // C11 6.10.3.5 EXAMPLE 4
@@ -2467,14 +2449,10 @@ static void macro_c11_example5() // C11 6.10.3.5 EXAMPLE 5
         "#define t(x,y,z) x ## y ## z\n"
         "int j[] = { t(1,2,3), t(,4,5), t(6,,7), t(8,9,),\n"
         " t(10,,), t(,11,), t(,,12), t(,,) };\n";
-    // TODO: t(,,) leaves an empty token
-    TODO_ASSERT_EQUALS("\n"
-                       "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
-                       "10 , 11 , 12 , } ;",
-                       "\n"
-                       "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
-                       "10 , 11 , 12 ,  } ;",
-                       preprocess(code));
+    ASSERT_EQUALS("\n"
+                  "int j [ ] = { 123 , 45 , 67 , 89 ,\n"
+                  "10 , 11 , 12 , } ;",
+                  preprocess(code));
 }
 
 static void macro_c11_example7() // C11 6.10.3.5 EXAMPLE 7
@@ -2542,8 +2520,7 @@ static void hashhash_empty_placemarker()
     std::string str;
     for (const simplecpp::Token *tok = tokens.cfront(); tok; tok = tok->next)
         str += "[" + tok->str() + "]";
-    // TODO: pasting two empty arguments gives an empty token
-    TODO_ASSERT_EQUALS("[{][}]", "[{][][}]", str);
+    ASSERT_EQUALS("[{][}]", str);
 }
 
 static void hashhash_invalid_dotdot()
@@ -4814,7 +4791,7 @@ static void tokenStreamExpansion_defer()
                         "#define R_I() R\n"
                         "#define R(n) n DEFER(R_I)()(x)\n"
                         "EXPAND(R(1))\n";
-    TODO_ASSERT_EQUALS("\n\n\n\n\n1 x R_I ( ) ( x )", "\n\n\n\n\n1 R ( x )", preprocess(code));
+    ASSERT_EQUALS("\n\n\n\n\n1 x R_I ( ) ( x )", preprocess(code));
 }
 
 static void tokenStreamExpansion_mutual()
@@ -4883,11 +4860,9 @@ static void tokenStreamExpansion_arg_self()
 {
     const char code[] = "#define f(x) x\n"
                         "f(f)(1)\n";
-    TODO_ASSERT_EQUALS("\n"
-                       "f ( 1 )",
-                       "\n"
-                       "1",
-                       preprocess(code));
+    ASSERT_EQUALS("\n"
+                  "f ( 1 )",
+                  preprocess(code));
 }
 
 static void tokenStreamExpansion_blue_in_arg()
@@ -4989,13 +4964,10 @@ static void tokenStreamExpansion_va_opt_empty_after_expansion()
     const char code[] = "#define F(...) <__VA_OPT__(x)>\n"
                         "#define E\n"
                         "F() F(E) F(1)\n";
-    TODO_ASSERT_EQUALS("\n"
-                       "\n"
-                       "< > < > < x >",
-                       "\n"
-                       "\n"
-                       "< > < x > < x >",
-                       preprocess(code));
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "< > < > < x >",
+                  preprocess(code));
 }
 
 static void tokenStreamExpansion_va_opt_hash()
@@ -5003,24 +4975,19 @@ static void tokenStreamExpansion_va_opt_hash()
     const char code[] = "#define X 1\n"
                         "#define F(a,...) #__VA_OPT__(a b)\n"
                         "F(X,2) F(X)\n";
-    TODO_ASSERT_EQUALS("\n"
-                       "\n"
-                       "\"1 b\" \"\"",
-                       "\n"
-                       "\n"
-                       "\"X\" b \"\"",
-                       preprocess(code));
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\"1 b\" \"\"",
+                  preprocess(code));
 }
 
 static void tokenStreamExpansion_va_opt_hashhash()
 {
     const char code[] = "#define F(a,...) a ## __VA_OPT__(b c) ## d\n"
                         "F(x,1) F(x)\n";
-    TODO_ASSERT_EQUALS("\n"
-                       "xb cd xd",
-                       "\n"
-                       "xb cd x# \"d\"",
-                       preprocess(code));
+    ASSERT_EQUALS("\n"
+                  "xb cd xd",
+                  preprocess(code));
 }
 
 static void tokenStreamExpansion_va_opt_hash_in_content()

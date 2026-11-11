@@ -671,7 +671,9 @@ std::string simplecpp::TokenList::stringify(bool linenrs) const
                 ret << loc.line << ": ";
         }
 
-        if (sameline(tok->previous, tok))
+        // a # from a macro expansion at the start of a line gets a space
+        // before it, so the output is not read as a directive (as gcc and clang do)
+        if (sameline(tok->previous, tok) || (tok->op == '#' && !tok->macro.empty()))
             ret << ' ';
 
         ret << tok->str();
@@ -4496,7 +4498,8 @@ static bool preprocessToken(simplecpp::TokenList &output, const simplecpp::Token
     if (it != macros.end()) {
         simplecpp::TokenList value(files);
         try {
-            tok1 = it->second.expand(value, tok, macros, files, outputList);
+            simplecpp::TokenStreamExpander expander(macros, files, outputList);
+            tok1 = expander.expand(value, tok);
         } catch (const simplecpp::Macro::invalidDirectiveAsMacroParameter &err) {
             if (outputList) {
                 simplecpp::Output out{
