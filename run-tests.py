@@ -77,7 +77,6 @@ todo = [
          'macro_fn_disable_expand.c',
          'macro_paste_commaext.c',
          'macro_paste_hard.c',
-         'macro_rescan_varargs.c',
 
          # todo, high priority
          'expr_usual_conversions.c', # condition is true: 4U - 30 >= 0
