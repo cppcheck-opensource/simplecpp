@@ -51,8 +51,7 @@ Checks: >
         -readability-uppercase-literal-suffix,
         -performance-avoid-endl,
         -performance-inefficient-string-concatenation,
-        -performance-no-automatic-move,
-        -performance-noexcept-move-constructor
+        -performance-no-automatic-move
 HeaderFilterRegex: '.*'
 WarningsAsErrors: '*'
 CheckOptions:
