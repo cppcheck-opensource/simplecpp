@@ -2395,6 +2395,12 @@ namespace simplecpp {
             std::cout << "  expand " << name() << " " << locstring(defineLocation()) << std::endl;
 #endif
 
+            // No arguments => not macro expansion
+            if (functionLike() && nameTokInst->next && nameTokInst->next->op != '(') {
+                output.push_back(new Token(nameTokInst->str(), loc));
+                return nameTokInst->next;
+            }
+
             usageList.emplace_back(loc);
 
             if (expandBuiltin(output, loc, nameTokInst))
@@ -2402,12 +2408,6 @@ namespace simplecpp {
 
             const bool calledInDefine = (loc.fileIndex != nameTokInst->location.fileIndex ||
                                          loc.line < nameTokInst->location.line);
-
-            // No arguments => not macro expansion
-            if (functionLike() && nameTokInst->next && nameTokInst->next->op != '(') {
-                output.push_back(new Token(nameTokInst->str(), loc));
-                return nameTokInst->next;
-            }
 
             if (functionLike() && nameTokInst->next && nameTokInst->next->op == '(' && isIntegerConstantMacro(name()))
                 usageList.back().arg = writtenArgument(nameTokInst, calledInDefine);
