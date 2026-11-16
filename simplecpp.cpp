@@ -2284,7 +2284,7 @@ namespace simplecpp {
          * The text between the parentheses of the call as written: the tokens joined with a single space,
          * comments are skipped. nameTokInst is followed by '('.
          */
-        std::string writtenArgument(const Token *nameTokInst, bool calledInDefine) const {
+        static std::string writtenArgument(const Token *nameTokInst, bool calledInDefine) {
             std::string ret;
             unsigned int par = 0U;
             for (const Token *tok = nameTokInst->next->next; calledInDefine ? sameline(tok, nameTokInst) : (tok != nullptr); tok = tok->next) {
