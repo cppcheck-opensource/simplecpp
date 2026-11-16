@@ -1872,7 +1872,7 @@ namespace simplecpp {
 
     class Macro {
     public:
-        /** a usage of this macro: where it is used and, for INTn_C / UINTn_C, the argument as written in the call */
+        /** a usage of this macro: where it is used and, for INTn_C / UINTn_C, the argument of the call */
         struct Usage {
             explicit Usage(const Location &location) : location(location) {}
             Location location;
@@ -2271,18 +2271,19 @@ namespace simplecpp {
             return parametertokens;
         }
 
-        /** Is name one of the <stdint.h> integer constant macros INTn_C / UINTn_C, n = 8, 16, 32 or 64? */
+        /** Is name one of the <stdint.h> integer constant macros INTn_C / UINTn_C, n = 8, 16, 32, 64 or MAX? */
         static bool isIntegerConstantMacro(const std::string &name) {
             const std::string::size_type pos = (name.compare(0, 1, "U") == 0) ? 1 : 0;
             if (name.compare(pos, 3, "INT") != 0)
                 return false;
             const std::string bits = name.substr(pos + 3);
-            return bits == "8_C" || bits == "16_C" || bits == "32_C" || bits == "64_C";
+            return bits == "8_C" || bits == "16_C" || bits == "32_C" || bits == "64_C" || bits == "MAX_C";
         }
 
         /**
-         * The text between the parentheses of the call as written: the tokens joined with a single space,
-         * comments are skipped. nameTokInst is followed by '('.
+         * The text between the parentheses of the call: the tokens joined with a single space, comments are
+         * skipped. nameTokInst is followed by '('. If the call is in a macro body, the parameters of the
+         * enclosing macro have already been substituted and the macros in them expanded.
          */
         static std::string writtenArgument(const Token *nameTokInst, bool calledInDefine) {
             std::string ret;

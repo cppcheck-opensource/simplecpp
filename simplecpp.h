@@ -464,8 +464,10 @@ namespace simplecpp {
         Location macroLocation;
         Location useLocation;
         bool macroValueKnown;
-        /** The argument of a call of INTn_C / UINTn_C (n = 8, 16, 32, 64) as written in the call: the tokens
-         *  between the parentheses joined with a single space, comments are skipped. Empty for all other macros. */
+        /** The argument of a call of INTn_C / UINTn_C (n = 8, 16, 32, 64, MAX): the tokens between the parentheses
+         *  joined with a single space, comments are skipped. Empty for all other macros.
+         *  For a call in the code this is the argument as written. For a call in a macro body it is the argument
+         *  after the parameters of the enclosing macro are substituted and the macros in them are expanded. */
         std::string arg;
     };
 

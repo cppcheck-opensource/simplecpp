@@ -4860,6 +4860,27 @@ static void macroUsageArg5()
                   "__UINT32_C use 7:1: []\n", macroUsageArg(code));
 }
 
+static void macroUsageArg7()
+{
+    // INTMAX_C / UINTMAX_C
+    ASSERT_EQUALS("INTMAX_C use 2:1: [300]\n", macroUsageArg("#define INTMAX_C(x) x\nINTMAX_C(300)\n"));
+    ASSERT_EQUALS("UINTMAX_C use 2:1: [300]\n", macroUsageArg("#define UINTMAX_C(x) x\nUINTMAX_C(300)\n"));
+    ASSERT_EQUALS("INTMAXX_C use 2:1: []\n", macroUsageArg("#define INTMAXX_C(x) x\nINTMAXX_C(300)\n"));
+}
+
+static void macroUsageArg6()
+{
+    // when the call is in a macro body the argument is recorded after the parameters
+    // are substituted and the macros in the arguments are expanded
+    const char code[] = "#define UINT32_C(x) x\n"
+                        "#define X(a) UINT32_C(a)\n"
+                        "#define R(a) a\n"
+                        "X(R(7) /* c */ + 8)\n";
+    ASSERT_EQUALS("R use 4:1: []\n"
+                  "UINT32_C use 4:1: [7 + 8]\n"
+                  "X use 4:1: []\n", macroUsageArg(code));
+}
+
 static void undef()
 {
     const char code[] = "#define A\n"
@@ -5941,6 +5962,8 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(macroUsageArg3);
     TEST_CASE(macroUsageArg4);
     TEST_CASE(macroUsageArg5);
+    TEST_CASE(macroUsageArg6);
+    TEST_CASE(macroUsageArg7);
 
     TEST_CASE(undef);
 
