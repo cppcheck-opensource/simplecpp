@@ -5770,6 +5770,50 @@ static void macroUsage()
     }
 }
 
+static void macroUsageUndef()
+{
+    const char code[] = "#define A 1\n"
+                        "A\n"
+                        "#undef A\n"
+                        "A\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("1@A(2:1) A(4:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("A 1:9 use 2:1\n", toString(macroUsage));
+
+    // the argument of an integer constant macro is kept
+    ASSERT_EQUALS("UINT32_C use 2:1: [5]\n", macroUsageArg("#define UINT32_C(x) x\nUINT32_C(5)\n#undef UINT32_C\n"));
+}
+
+static void macroUsageRedefine()
+{
+    const char code[] = "#define A 1\n"
+                        "A\n"
+                        "#undef A\n"
+                        "#define A 2\n"
+                        "A\n"
+                        "#define B 3\n"
+                        "B\n"
+                        "#define B 4\n"
+                        "B\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("1@A(2:1) 2@A(5:1) 3@B(7:1) 4@B(9:1)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("A 1:9 use 2:1\nA 4:9 use 5:1\nB 6:9 use 7:1\nB 8:9 use 9:1\n", toString(macroUsage));
+}
+
+static void macroUsageUndefIfdef()
+{
+    const char code[] = "#define A\n"
+                        "#ifdef A\n"
+                        "#endif\n"
+                        "#undef A\n"
+                        "#define A\n"
+                        "#ifdef A\n"
+                        "#endif\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("A 1:9 use 2:8\nA 5:9 use 6:8\n", toString(macroUsage));
+}
+
 static void isAbsolutePath() {
 #ifdef _WIN32
     ASSERT_EQUALS(true, simplecpp::isAbsolutePath("C:\\foo\\bar"));
@@ -6194,6 +6238,9 @@ static void runTests(int argc, char **argv, Input input)
 
     TEST_CASE(ifCond);
     TEST_CASE(macroUsage);
+    TEST_CASE(macroUsageUndef);
+    TEST_CASE(macroUsageRedefine);
+    TEST_CASE(macroUsageUndefIfdef);
 
     TEST_CASE(fuzz_crash);
 
