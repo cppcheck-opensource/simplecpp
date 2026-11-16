@@ -1872,6 +1872,13 @@ namespace simplecpp {
 
     class Macro {
     public:
+        /** a usage of this macro: where it is used and, for INTn_C / UINTn_C, the argument as written in the call */
+        struct Usage {
+            explicit Usage(const Location &location) : location(location) {}
+            Location location;
+            std::string arg;
+        };
+
         explicit Macro(std::vector<std::string> &f) : nameTokDef(nullptr), valueToken(nullptr), endToken(nullptr), files(f), tokenListDefine(f), variadic(false), variadicOpt(false), valueDefinedInCode_(false) {}
 
         /**
@@ -2068,7 +2075,7 @@ namespace simplecpp {
         }
 
         /** how has this macro been used so far */
-        const std::list<Location> &usage() const {
+        const std::list<Usage> &usage() const {
             return usageList;
         }
 
@@ -2264,6 +2271,39 @@ namespace simplecpp {
             return parametertokens;
         }
 
+        /** Is name one of the <stdint.h> integer constant macros INTn_C / UINTn_C, n = 8, 16, 32 or 64? */
+        static bool isIntegerConstantMacro(const std::string &name) {
+            const std::string::size_type pos = (name.compare(0, 1, "U") == 0) ? 1 : 0;
+            if (name.compare(pos, 3, "INT") != 0)
+                return false;
+            const std::string bits = name.substr(pos + 3);
+            return bits == "8_C" || bits == "16_C" || bits == "32_C" || bits == "64_C";
+        }
+
+        /**
+         * The text between the parentheses of the call as written: the tokens joined with a single space,
+         * comments are skipped. nameTokInst is followed by '('.
+         */
+        std::string writtenArgument(const Token *nameTokInst, bool calledInDefine) const {
+            std::string ret;
+            unsigned int par = 0U;
+            for (const Token *tok = nameTokInst->next->next; calledInDefine ? sameline(tok, nameTokInst) : (tok != nullptr); tok = tok->next) {
+                if (tok->comment)
+                    continue;
+                if (tok->op == '(') {
+                    ++par;
+                } else if (tok->op == ')') {
+                    if (par == 0U)
+                        break;
+                    --par;
+                }
+                if (!ret.empty())
+                    ret += ' ';
+                ret += tok->str();
+            }
+            return ret;
+        }
+
         /** The '(', each ',' between two arguments and the ')' of the call. nameTokInst is followed by '('. */
         std::vector<const Token *> findArgumentDelimiters(const Token *nameTokInst, bool calledInDefine) const {
             std::vector<const Token *> parametertokens;
@@ -2368,6 +2408,9 @@ namespace simplecpp {
                 output.push_back(new Token(nameTokInst->str(), loc));
                 return nameTokInst->next;
             }
+
+            if (functionLike() && nameTokInst->next && nameTokInst->next->op == '(' && isIntegerConstantMacro(name()))
+                usageList.back().arg = writtenArgument(nameTokInst, calledInDefine);
 
             std::vector<const Token*> parametertokens1(getMacroParameters(nameTokInst, calledInDefine));
 
@@ -2976,7 +3019,7 @@ namespace simplecpp {
         TokenList tokenListDefine;
 
         /** usage of this macro */
-        mutable std::list<Location> usageList;
+        mutable std::list<Usage> usageList;
 
         /** is macro variadic? */
         bool variadic;
@@ -4533,14 +4576,15 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
     if (macroUsage) {
         for (simplecpp::MacroMap::const_iterator macroIt = macros.begin(); macroIt != macros.end(); ++macroIt) {
             const Macro &macro = macroIt->second;
-            std::list<Location> usage = macro.usage();
+            std::list<Macro::Usage> usage = macro.usage();
             const std::list<Location>& temp = maybeUsedMacros[macro.name()];
             usage.insert(usage.end(), temp.begin(), temp.end());
-            for (std::list<Location>::const_iterator usageIt = usage.begin(); usageIt != usage.end(); ++usageIt) {
+            for (std::list<Macro::Usage>::iterator usageIt = usage.begin(); usageIt != usage.end(); ++usageIt) {
                 MacroUsage mu(macro.valueDefinedInCode());
                 mu.macroName = macro.name();
                 mu.macroLocation = macro.defineLocation();
-                mu.useLocation = *usageIt;
+                mu.useLocation = usageIt->location;
+                mu.arg = std::move(usageIt->arg);
                 macroUsage->emplace_back(std::move(mu));
             }
         }

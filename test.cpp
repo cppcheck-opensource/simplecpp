@@ -4788,6 +4788,78 @@ static void tokenMacro15()
     ASSERT_EQUALS("D 1:1 use 1:3 unknown\n", toString(macroUsage));
 }
 
+/** The argument of each macro usage as "name use line:col: [arg]", sorted. */
+static std::string argToString(const std::list<simplecpp::MacroUsage> &macroUsage)
+{
+    std::vector<std::string> lines;
+    for (const simplecpp::MacroUsage &mu : macroUsage)
+        lines.push_back(mu.macroName + " use " + std::to_string(mu.useLocation.line) + ':' + std::to_string(mu.useLocation.col) + ": [" + mu.arg + "]\n");
+    std::sort(lines.begin(), lines.end());
+    std::string ret;
+    for (const std::string &line : lines)
+        ret += line;
+    return ret;
+}
+
+static std::string macroUsageArg(const char code[], bool removeComments = true)
+{
+    simplecpp::DUI dui;
+    dui.removeComments = removeComments;
+    std::list<simplecpp::MacroUsage> macroUsage;
+    simplecpp::OutputList outputList;
+    preprocess(code, dui, &outputList, &macroUsage);
+    return argToString(macroUsage);
+}
+
+static void macroUsageArg1()
+{
+    // the tokens of the argument are joined with one space
+    ASSERT_EQUALS("INT8_C use 2:1: [300]\n", macroUsageArg("#define INT8_C(x) x\nINT8_C(300)\n"));
+    ASSERT_EQUALS("INT8_C use 2:1: [1 + 2]\n", macroUsageArg("#define INT8_C(x) x\nINT8_C( 1+2 )\n"));
+    ASSERT_EQUALS("INT8_C use 2:1: [1 + 2]\n", macroUsageArg("#define INT8_C(x) x\nINT8_C(1 +\n 2)\n"));
+    ASSERT_EQUALS("INT8_C use 2:1: [( 1 , 2 )]\n", macroUsageArg("#define INT8_C(x) x\nINT8_C((1,2))\n"));
+    ASSERT_EQUALS("INT8_C use 2:1: []\n", macroUsageArg("#define INT8_C(x) x\nINT8_C()\n"));
+}
+
+static void macroUsageArg2()
+{
+    // comments are skipped, also when they are kept in the output
+    ASSERT_EQUALS("UINT32_C use 2:1: [10UL]\n", macroUsageArg("#define UINT32_C(x) x##U\nUINT32_C( 10UL /*x*/)\n"));
+    ASSERT_EQUALS("UINT32_C use 2:1: [10UL]\n", macroUsageArg("#define UINT32_C(x) x\nUINT32_C( 10UL /*x*/)\n", false));
+}
+
+static void macroUsageArg3()
+{
+    // several arguments: all the text between the parentheses
+    ASSERT_EQUALS("UINT16_C use 2:1: [1 , , 3]\n", macroUsageArg("#define UINT16_C(a,b,c) a b c\nUINT16_C(1,,3)\n"));
+    ASSERT_EQUALS("UINT16_C use 2:1: [\"%d\" , a , b]\n", macroUsageArg("#define UINT16_C(fmt, ...) f(fmt, __VA_ARGS__)\nUINT16_C(\"%d\", a, b)\n"));
+}
+
+static void macroUsageArg4()
+{
+    // object-like macro and function-like macro name without call have no argument
+    ASSERT_EQUALS("INT64_C use 2:1: []\n", macroUsageArg("#define INT64_C 1\nINT64_C\n"));
+    ASSERT_EQUALS("INT64_C use 2:1: []\n", macroUsageArg("#define INT64_C(x) x\nINT64_C;\n"));
+}
+
+static void macroUsageArg5()
+{
+    // the argument is only recorded for INTn_C / UINTn_C
+    const char code[] = "#define __UINT32_C(c) c ## UL\n"
+                        "#define UINT32_C(x) __UINT32_C(x)\n"
+                        "#define F(x) x\n"
+                        "#define INT128_C(x) x\n"
+                        "#define XINT8_C(x) x\n"
+                        "#define INT8_CX(x) x\n"
+                        "UINT32_C(10UL) F(1) INT128_C(2) XINT8_C(3) INT8_CX(4)\n";
+    ASSERT_EQUALS("F use 7:16: []\n"
+                  "INT128_C use 7:21: []\n"
+                  "INT8_CX use 7:44: []\n"
+                  "UINT32_C use 7:1: [10UL]\n"
+                  "XINT8_C use 7:33: []\n"
+                  "__UINT32_C use 7:1: []\n", macroUsageArg(code));
+}
+
 static void undef()
 {
     const char code[] = "#define A\n"
@@ -5864,6 +5936,11 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(tokenMacro13);
     TEST_CASE(tokenMacro14);
     TEST_CASE(tokenMacro15);
+    TEST_CASE(macroUsageArg1);
+    TEST_CASE(macroUsageArg2);
+    TEST_CASE(macroUsageArg3);
+    TEST_CASE(macroUsageArg4);
+    TEST_CASE(macroUsageArg5);
 
     TEST_CASE(undef);
 

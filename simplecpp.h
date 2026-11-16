@@ -464,6 +464,9 @@ namespace simplecpp {
         Location macroLocation;
         Location useLocation;
         bool macroValueKnown;
+        /** The argument of a call of INTn_C / UINTn_C (n = 8, 16, 32, 64) as written in the call: the tokens
+         *  between the parentheses joined with a single space, comments are skipped. Empty for all other macros. */
+        std::string arg;
     };
 
     /** Tracking #if/#elif expressions */
