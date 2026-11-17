@@ -2256,7 +2256,9 @@ namespace simplecpp {
          *  Parameters are substituted before the rescan, so the parentheses are
          *  counted in the substituted tokens: parameters that expand to nothing are
          *  skipped, and the '(' and the ')' of the call can each come from the
-         *  replacement list or from a parameter. Returns the replacement-list token
+         *  replacement list or from a parameter. A parameter that is followed by
+         *  ## is not macro-expanded: the search stops at it when it comes before
+         *  the '('. Returns the replacement-list token
          *  that supplied the ')', or nullptr when there is no complete call. When
          *  that token is a parameter, its expansion is copied whole since it may
          *  hold more than the end of the call. When the first parameter that does
@@ -2276,7 +2278,17 @@ namespace simplecpp {
                     continue;
                 }
                 const Token * const end = callArgs.cback();
-                if (!expandArg(callArgs, after, loc, macros, expandedmacros, parametertokens, outputList)) {
+                bool isParameter;
+                if (sameline(after, after->next) && after->next->op == '#' && sameline(after, after->next->next) && after->next->next->op == '#') {
+                    // the left operand of ## is substituted without macro expansion
+                    isParameter = expandArg(callArgs, after, parametertokens);
+                    // the paste can change what follows the macro name
+                    if (isParameter && par == 0U)
+                        return nullptr;
+                } else {
+                    isParameter = expandArg(callArgs, after, loc, macros, expandedmacros, parametertokens, outputList);
+                }
+                if (!isParameter) {
                     // only parameters, which can expand to nothing, can come between
                     // the macro name and its '('
                     if (par == 0U && after->op != '(')

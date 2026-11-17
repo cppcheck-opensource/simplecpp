@@ -1211,6 +1211,22 @@ static void define28()
                   "\n"
                   "\n"
                   "[ F ] F [ 1 ]", preprocess(code9));
+
+    // a parameter that is followed by ## is not macro-expanded: after a
+    // trailing macro name it does not start the call, and inside the call it
+    // is substituted as it is
+    const char code10[] = "#define F(x) [x]\n"
+                          "#define E\n"
+                          "#define X (1)\n"
+                          "#define A(f, x, y) f x ## y\n"
+                          "#define C(f, x, y) f (x ## y)\n"
+                          "A(F, X, ) A(F, X, Z) C(F, 1 E, Z)\n";
+    ASSERT_EQUALS("\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "\n"
+                  "F ( 1 ) F XZ [ 1 EZ ]", preprocess(code10));
 }
 
 
