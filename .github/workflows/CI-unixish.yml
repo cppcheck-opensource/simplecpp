@@ -10,7 +10,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm, ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, macos-26, macos-26-intel]
+        os: [ubuntu-22.04, ubuntu-22.04-arm, ubuntu-24.04, ubuntu-24.04-arm, ubuntu-26.04, ubuntu-26.04-arm, macos-15, macos-15-intel, macos-26, macos-26-intel]
         compiler: [clang++]
         include:
           - os: ubuntu-22.04
@@ -20,6 +20,10 @@ jobs:
           - os: ubuntu-24.04
             compiler: g++
           - os: ubuntu-24.04-arm
+            compiler: g++
+          - os: ubuntu-26.04
+            compiler: g++
+          - os: ubuntu-26.04-arm
             compiler: g++
       fail-fast: false
 
@@ -36,7 +40,7 @@ jobs:
     # the man-db trigger causes package installations to stall for several minutes at times. so just drop the package.
     # see https://github.com/actions/runner/issues/4030
     - name: Remove man-db package on ubuntu
-      if: matrix.os == 'ubuntu-24.04'
+      if: matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-26.04'
       run: |
         sudo apt-get update
         sudo apt-get remove man-db
