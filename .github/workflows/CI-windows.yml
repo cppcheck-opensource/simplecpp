@@ -71,6 +71,11 @@ jobs:
           set SIMPLECPP_EXE_PATH=.\${{ matrix.config }}\simplecpp.exe
           python -m pytest integration_test.py -vv || exit /b !errorlevel!
 
+      - name: run-tests.py
+        run: |
+          set SIMPLECPP_EXE_PATH=.\${{ matrix.config }}\simplecpp.exe
+          python run-tests.py || exit /b !errorlevel!
+
       - name: Run CMake (c++17)
         run: |
           cmake -S . -B build.cxx17 -A x64 -Werror=dev --warn-uninitialized -DCMAKE_CXX_STANDARD=17 -DCMAKE_COMPILE_WARNING_AS_ERROR=On || exit /b !errorlevel!
