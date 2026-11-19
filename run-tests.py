@@ -23,12 +23,13 @@ GCC_EXE = shutil.which('gcc')
 if not GCC_EXE:
   sys.exit('Failed to run tests: gcc compiler not found')
 
-SIMPLECPP_EXE = './simplecpp'
+SIMPLECPP_EXE = os.environ.get('SIMPLECPP_EXE_PATH', './simplecpp')
 
 
 commands = []
 
 for f in sorted(glob.glob(os.path.expanduser('testsuite/clang-preprocessor-tests/*.c*'))):
+  f = f.replace('\\', '/') # glob returns backslash separators on Windows
   for line in open(f, 'rt', encoding='utf-8'):
     if line.startswith('// RUN: %clang_cc1 '):
       cmd = ''
@@ -40,6 +41,7 @@ for f in sorted(glob.glob(os.path.expanduser('testsuite/clang-preprocessor-tests
         if not newcmd in commands:
           commands.append(cmd[1:] + ' ' + f)
 for f in sorted(glob.glob(os.path.expanduser('testsuite/gcc-preprocessor-tests/*.c*'))):
+  f = f.replace('\\', '/') # glob returns backslash separators on Windows
   commands.append('-E ' + f)
 
 # skipping tests..
