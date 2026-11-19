@@ -4617,8 +4617,10 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                             continue;
                         }
 
-                        // usage of defined macros is recorded when they are expanded
-                        if (macros.find(tok->str()) == macros.end())
+                        // usage of defined macros is recorded when they are expanded,
+                        // but a function-like macro without ( is not expanded
+                        const MacroMap::const_iterator macroIt = macros.find(tok->str());
+                        if (macroIt == macros.end() || (macroIt->second.functionLike() && tok->next && tok->next->op != '('))
                             maybeUsedMacros[tok->str()].emplace_back(tok->location);
 
                         const Token *tmp = tok;
