@@ -4352,6 +4352,8 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
     }
 
     std::map<std::string, std::list<Location>> maybeUsedMacros;
+    // usages of macros that are undefined or redefined, handed over only when preprocessing succeeds
+    std::list<MacroUsage> pendingUsage;
 
     for (const Token *rawtok = nullptr; rawtok || !includetokenstack.empty();) {
         if (rawtok == nullptr) {
@@ -4419,7 +4421,7 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                         if (it == macros.end()) {
                             macros.insert(std::pair<TokenString, Macro>(macro.name(), macro));
                         } else {
-                            addMacroUsage(it->second, maybeUsedMacros, macroUsage);
+                            addMacroUsage(it->second, maybeUsedMacros, macroUsage ? &pendingUsage : nullptr);
                             it->second = macro;
                         }
                     }
@@ -4713,7 +4715,7 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                     if (sameline(rawtok, tok)) {
                         const MacroMap::iterator it = macros.find(tok->str());
                         if (it != macros.end()) {
-                            addMacroUsage(it->second, maybeUsedMacros, macroUsage);
+                            addMacroUsage(it->second, maybeUsedMacros, macroUsage ? &pendingUsage : nullptr);
                             macros.erase(it);
                         }
                     }
@@ -4768,8 +4770,11 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
         }
     }
 
-    for (simplecpp::MacroMap::const_iterator macroIt = macros.begin(); macroIt != macros.end(); ++macroIt)
-        addMacroUsage(macroIt->second, maybeUsedMacros, macroUsage);
+    if (macroUsage) {
+        macroUsage->splice(macroUsage->end(), pendingUsage);
+        for (simplecpp::MacroMap::const_iterator macroIt = macros.begin(); macroIt != macros.end(); ++macroIt)
+            addMacroUsage(macroIt->second, maybeUsedMacros, macroUsage);
+    }
 }
 
 void simplecpp::cleanup(FileDataCache &cache)

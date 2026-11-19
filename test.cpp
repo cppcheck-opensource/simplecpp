@@ -5784,6 +5784,19 @@ static void macroUsageUndef()
     ASSERT_EQUALS("UINT32_C use 2:1: [5]\n", macroUsageArg("#define UINT32_C(x) x\nUINT32_C(5)\n#undef UINT32_C\n"));
 }
 
+static void macroUsageUndefError()
+{
+    // no usages are reported when preprocessing fails
+    const char code[] = "#define A 1\n"
+                        "A\n"
+                        "#undef A\n"
+                        "#error stop\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    simplecpp::OutputList outputList;
+    preprocess(code, simplecpp::DUI(), &outputList, &macroUsage);
+    ASSERT_EQUALS("", toString(macroUsage));
+}
+
 static void macroUsageRedefine()
 {
     const char code[] = "#define A 1\n"
@@ -6239,6 +6252,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(ifCond);
     TEST_CASE(macroUsage);
     TEST_CASE(macroUsageUndef);
+    TEST_CASE(macroUsageUndefError);
     TEST_CASE(macroUsageRedefine);
     TEST_CASE(macroUsageUndefIfdef);
 
