@@ -2409,7 +2409,7 @@ namespace simplecpp {
             const bool calledInDefine = (loc.fileIndex != nameTokInst->location.fileIndex ||
                                          loc.line < nameTokInst->location.line);
 
-            if (functionLike() && nameTokInst->next && nameTokInst->next->op == '(' && isIntegerConstantMacro(name()))
+            if (functionLike() && nameTokInst->next && isIntegerConstantMacro(name()))
                 usageList.back().arg = writtenArgument(nameTokInst, calledInDefine);
 
             std::vector<const Token*> parametertokens1(getMacroParameters(nameTokInst, calledInDefine));
