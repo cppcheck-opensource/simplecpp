@@ -4504,6 +4504,45 @@ static void include11()   // #669 - -include with preprocess()
     ASSERT_EQUALS("Can not open include file 'missing.h' that is explicitly included.", outputList.begin()->msg);
 }
 
+static void include12()   // #769 - No "No newline at end of file" warning in C++ header
+{
+    const std::string header = "testrunner_769.h";
+    {
+        std::ofstream f(header, std::ios::binary);
+        f << "int x;"; // <- no newline at end of file
+    }
+
+    const char code_c[] = "#include \"testrunner_769.h\"\n";
+
+    {
+        std::vector<std::string> files;
+        const simplecpp::TokenList rawtokens = makeTokenList(code_c, files, "769.cpp");
+        simplecpp::FileDataCache cache;
+        simplecpp::TokenList out(files);
+        simplecpp::OutputList outputList;
+        simplecpp::DUI dui;
+        dui.std = "c++11";
+        simplecpp::preprocess(out, rawtokens, files, cache, dui, &outputList);
+        simplecpp::cleanup(cache);
+        ASSERT_EQUALS("", toString(outputList));
+    }
+
+    {
+        std::vector<std::string> files;
+        const simplecpp::TokenList rawtokens = makeTokenList(code_c, files, "769.c");
+        simplecpp::FileDataCache cache;
+        simplecpp::TokenList out(files);
+        simplecpp::OutputList outputList;
+        simplecpp::DUI dui;
+        dui.std = "c11";
+        simplecpp::preprocess(out, rawtokens, files, cache, dui, &outputList);
+        simplecpp::cleanup(cache);
+        ASSERT_EQUALS("file1,1,portability_no_eof_newline,No newline at end of file is undefined behavior in C.\n", toString(outputList));
+    }
+
+    std::remove(header.c_str());
+}
+
 static void readfile_nullbyte()
 {
     const char code[] = "ab\0cd\n";
@@ -6104,6 +6143,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(include9); // #include MACRO
     TEST_CASE(include10); // -include with load()
     TEST_CASE(include11); // -include with preprocess()
+    TEST_CASE(include12); // #769
 
     TEST_CASE(multiline1);
     TEST_CASE(multiline2);
