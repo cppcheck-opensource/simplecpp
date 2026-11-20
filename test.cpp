@@ -5000,6 +5000,23 @@ static void tokenMacro17()
     ASSERT_EQUALS("F 1:9 use 2:5\n", toString(macroUsage));
 }
 
+static void tokenMacro18()
+{
+    // a bare function-like macro name in an argument or a replacement list is not a usage
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("\n\nF ;", preprocess("#define F(x) x\n#define G(a) a\nG(F);\n", &macroUsage));
+    ASSERT_EQUALS("G 2:9 use 3:1\n", toString(macroUsage));
+    macroUsage.clear();
+    ASSERT_EQUALS("\n\nF F 5 ;", preprocess("#define F(x) x\n#define H(a) a F a(5)\nH(F);\n", &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 3:1\nH 2:9 use 3:1\n", toString(macroUsage));
+    macroUsage.clear();
+    ASSERT_EQUALS("\n1", preprocess("#define F(x) x\nF\n(1)\n", &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 2:1\n", toString(macroUsage));
+    macroUsage.clear();
+    ASSERT_EQUALS("\nF ; 1 ;", preprocess("#define F() 1\nF; F();\n", &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 2:4\n", toString(macroUsage));
+}
+
 /** The argument of each macro usage as "name use line:col: [arg]", sorted. */
 static std::string argToString(const std::list<simplecpp::MacroUsage> &macroUsage)
 {
@@ -6172,6 +6189,7 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(tokenMacro15);
     TEST_CASE(tokenMacro16);
     TEST_CASE(tokenMacro17);
+    TEST_CASE(tokenMacro18);
     TEST_CASE(macroUsageArg1);
     TEST_CASE(macroUsageArg2);
     TEST_CASE(macroUsageArg3);
