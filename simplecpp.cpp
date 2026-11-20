@@ -290,7 +290,6 @@ void simplecpp::Token::printOut() const
     std::cout << std::endl;
 }
 
-// cppcheck-suppress noConstructor - we call init() in the inherited to initialize the private members
 class simplecpp::TokenList::Stream {
 public:
     virtual ~Stream() = default;
@@ -424,7 +423,7 @@ private:
         return 0;
     }
 
-    unsigned short bom;
+    unsigned short bom{0};
 
     /** characters that are read but not used yet. The next character is at the back. */
     std::string buffer;
@@ -435,13 +434,12 @@ private:
     /** get() has returned EOF */
     bool inputEnd{false};
 protected:
-    bool isUtf16;
+    bool isUtf16{false};
 };
 
 namespace {
-    class StdIStream : public simplecpp::TokenList::Stream {
+    class StdIStream final : public simplecpp::TokenList::Stream {
     public:
-        // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         explicit StdIStream(std::istream &istr)
             : istr(istr) {
             assert(istr.good());
@@ -463,9 +461,8 @@ namespace {
         std::istream &istr;
     };
 
-    class StdCharBufStream : public simplecpp::TokenList::Stream {
+    class StdCharBufStream final : public simplecpp::TokenList::Stream {
     public:
-        // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         StdCharBufStream(const unsigned char* str, std::size_t size)
             : str(str)
             , size(size)
@@ -494,12 +491,11 @@ namespace {
         std::size_t pos{};
     };
 
-    class FileStream : public simplecpp::TokenList::Stream {
+    class FileStream final : public simplecpp::TokenList::Stream {
     public:
         /**
          * @throws simplecpp::Output thrown if file is not found
          */
-        // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         explicit FileStream(const std::string &filename, std::vector<std::string> &files)
             : file(fopen(filename.c_str(), "rb"))
         {
