@@ -1,0 +1,55 @@
+# Syntax reference https://help.github.com/en/actions/reference/workflow-syntax-for-github-actions
+# Environment reference https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners
+name: cppcheck
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  selfcheck:
+
+    runs-on: ubuntu-24.04
+
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+
+    env:
+      CPPCHECK_VERSION: '2.22.0'
+      CPPCHECK_INSTALL_DIR: ${{ github.workspace }}/cppcheck-install
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Cache cppcheck
+        uses: actions/cache@v4
+        id: cache-cppcheck
+        with:
+          path: ${{ env.CPPCHECK_INSTALL_DIR }}
+          key: ${{ runner.os }}-cppcheck-${{ env.CPPCHECK_VERSION }}
+
+      - name: Build cppcheck
+        if: steps.cache-cppcheck.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "$CPPCHECK_VERSION" https://github.com/danmar/cppcheck.git cppcheck-src
+          cmake -S cppcheck-src -B cppcheck-src/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$CPPCHECK_INSTALL_DIR"
+          cmake --build cppcheck-src/build -j "$(nproc)"
+          cmake --install cppcheck-src/build
+
+      - name: Self check
+        run: |
+          "$CPPCHECK_INSTALL_DIR/bin/cppcheck" --version
+          "$CPPCHECK_INSTALL_DIR/bin/cppcheck" \
+            --enable=style,information \
+            --inconclusive \
+            --inline-suppr \
+            --check-level=exhaustive \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            --suppress=checkersReport \
+            --template='{file}:{line}:{column}: {severity}:{inconclusive:inconclusive:} {message} [{id}]' \
+            simplecpp.cpp
