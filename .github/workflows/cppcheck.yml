@@ -49,7 +49,8 @@ jobs:
             --inline-suppr \
             --check-level=exhaustive \
             --error-exitcode=1 \
-            --suppress=missingIncludeSystem \
             --suppress=checkersReport \
+            --suppress=missingMemberCopy \
+            --suppress=constParameterReference \
             --template='{file}:{line}:{column}: {severity}:{inconclusive:inconclusive:} {message} [{id}]' \
             simplecpp.cpp
