@@ -30,6 +30,7 @@
 #include <fstream>
 #include <iostream>
 #include <istream>
+#include <iterator>
 #include <limits>
 #include <list>
 #include <map>
@@ -290,7 +291,6 @@ void simplecpp::Token::printOut() const
     std::cout << std::endl;
 }
 
-// cppcheck-suppress noConstructor - we call init() in the inherited to initialize the private members
 class simplecpp::TokenList::Stream {
 public:
     virtual ~Stream() = default;
@@ -424,6 +424,7 @@ private:
         return 0;
     }
 
+    // cppcheck-suppress uninitMemberVarPrivate - FP this class is a abstract base class and its members are initialized in init()
     unsigned short bom;
 
     /** characters that are read but not used yet. The next character is at the back. */
@@ -435,11 +436,12 @@ private:
     /** get() has returned EOF */
     bool inputEnd{false};
 protected:
+    // cppcheck-suppress uninitMemberVarNoCtor - FP this class is a abstract base class and its members are initialized in init()
     bool isUtf16;
 };
 
 namespace {
-    class StdIStream : public simplecpp::TokenList::Stream {
+    class StdIStream final : public simplecpp::TokenList::Stream {
     public:
         // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         explicit StdIStream(std::istream &istr)
@@ -463,7 +465,7 @@ namespace {
         std::istream &istr;
     };
 
-    class StdCharBufStream : public simplecpp::TokenList::Stream {
+    class StdCharBufStream final : public simplecpp::TokenList::Stream {
     public:
         // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         StdCharBufStream(const unsigned char* str, std::size_t size)
@@ -494,7 +496,7 @@ namespace {
         std::size_t pos{};
     };
 
-    class FileStream : public simplecpp::TokenList::Stream {
+    class FileStream final : public simplecpp::TokenList::Stream {
     public:
         /**
          * @throws simplecpp::Output thrown if file is not found
@@ -859,7 +861,7 @@ static simplecpp::TokenString readLineComment(simplecpp::TokenList::Stream &stre
     return currentToken;
 }
 
-simplecpp::TokenString simplecpp::TokenList::readBlockComment(Stream &stream, unsigned int &multiline)
+simplecpp::TokenString simplecpp::TokenList::readBlockComment(Stream &stream, unsigned int &multiline) const
 {
     TokenString currentToken = "/*";
     (void)stream.readChar();
@@ -1844,10 +1846,11 @@ const simplecpp::Token* simplecpp::TokenList::isLastLinePreprocessor(int maxsize
 
 unsigned int simplecpp::TokenList::fileIndex(const std::string &filename)
 {
-    for (unsigned int i = 0; i < files.size(); ++i) {
-        if (files[i] == filename)
-            return i;
-    }
+    const auto it = std::find_if(files.cbegin(), files.cend(), [&filename](const std::string &f) {
+        return f == filename;
+    });
+    if (it != files.cend())
+        return static_cast<unsigned int>(std::distance(files.cbegin(), it));
     files.emplace_back(filename);
     return files.size() - 1U;
 }
@@ -2675,16 +2678,16 @@ namespace simplecpp {
 
         /** Expand while the expansion result in @p temp ends with the name of a
          *  function-like macro whose arguments are supplied by the tokens after @p tok.
-         *  Each round consumes that macro call from the token stream. The @p gatherCall
+         *  Each round consumes that macro call from the token stream. The @p gather
          *  callback copies the macro name and its call into its list and returns the
          *  last token of the call, or nullptr when no complete call is available (see
          *  gatherCall and gatherCallAfter). Returns the first token that was not
          *  consumed (tok->next when no call was expanded). */
         template<class GatherCall>
-        const Token *expandTrailingCalls(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, OutputList *outputList, GatherCall gatherCall) const {
+        const Token *expandTrailingCalls(TokenList &output, TokenList &temp, const Location &loc, const Token *tok, const MacroMap &macros, const std::set<TokenString> &expandedmacros, OutputList *outputList, GatherCall gather) const {
             while (const Macro * const calledMacro = callableMacro(temp.cback(), macros, expandedmacros)) {
                 TokenList call(files);
-                const Token * const last = gatherCall(call, temp.cback(), tok);
+                const Token * const last = gather(call, temp.cback(), tok);
                 if (!last)
                     break;
                 output.takeTokens(temp);
