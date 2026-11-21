@@ -424,7 +424,8 @@ private:
         return 0;
     }
 
-    unsigned short bom{0};
+    // cppcheck-suppress uninitMemberVarPrivate - FP this class is a abstract base class and its members are initialized in init()
+    unsigned short bom;
 
     /** characters that are read but not used yet. The next character is at the back. */
     std::string buffer;
@@ -435,12 +436,14 @@ private:
     /** get() has returned EOF */
     bool inputEnd{false};
 protected:
-    bool isUtf16{false};
+    // cppcheck-suppress uninitMemberVarNoCtor - FP this class is a abstract base class and its members are initialized in init()
+    bool isUtf16;
 };
 
 namespace {
     class StdIStream final : public simplecpp::TokenList::Stream {
     public:
+        // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         explicit StdIStream(std::istream &istr)
             : istr(istr) {
             assert(istr.good());
@@ -464,6 +467,7 @@ namespace {
 
     class StdCharBufStream final : public simplecpp::TokenList::Stream {
     public:
+        // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         StdCharBufStream(const unsigned char* str, std::size_t size)
             : str(str)
             , size(size)
@@ -497,6 +501,7 @@ namespace {
         /**
          * @throws simplecpp::Output thrown if file is not found
          */
+        // cppcheck-suppress uninitDerivedMemberVar - we call Stream::init() to initialize the private members
         explicit FileStream(const std::string &filename, std::vector<std::string> &files)
             : file(fopen(filename.c_str(), "rb"))
         {

@@ -10,7 +10,7 @@ permissions:
 jobs:
   selfcheck:
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     defaults:
       run:
@@ -49,8 +49,6 @@ jobs:
             --inline-suppr \
             --check-level=exhaustive \
             --error-exitcode=1 \
-            --suppress=checkersReport \
             --suppress=missingMemberCopy \
             --suppress=constParameterReference \
-            --template='{file}:{line}:{column}: {severity}:{inconclusive:inconclusive:} {message} [{id}]' \
             simplecpp.cpp
