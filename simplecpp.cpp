@@ -4191,6 +4191,27 @@ static std::string getTimeDefine(const struct tm *timep)
     return std::string("\"").append(buf).append("\"");
 }
 
+/** Report the usages of a macro. This is done when its definition goes away, so that #undef and redefinition do not lose them. */
+static void addMacroUsage(const simplecpp::Macro &macro, std::map<std::string, std::list<simplecpp::Location>> &maybeUsedMacros, std::list<simplecpp::MacroUsage> *macroUsage)
+{
+    if (!macroUsage)
+        return;
+    std::list<simplecpp::Macro::Usage> usage = macro.usage();
+    const std::map<std::string, std::list<simplecpp::Location>>::iterator maybeUsed = maybeUsedMacros.find(macro.name());
+    if (maybeUsed != maybeUsedMacros.end()) {
+        usage.insert(usage.end(), maybeUsed->second.begin(), maybeUsed->second.end());
+        maybeUsedMacros.erase(maybeUsed);
+    }
+    for (std::list<simplecpp::Macro::Usage>::iterator usageIt = usage.begin(); usageIt != usage.end(); ++usageIt) {
+        simplecpp::MacroUsage mu(macro.valueDefinedInCode());
+        mu.macroName = macro.name();
+        mu.macroLocation = macro.defineLocation();
+        mu.useLocation = usageIt->location;
+        mu.arg = std::move(usageIt->arg);
+        macroUsage->emplace_back(std::move(mu));
+    }
+}
+
 void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenList &rawtokens, std::vector<std::string> &files, simplecpp::FileDataCache &cache, const simplecpp::DUI &dui, simplecpp::OutputList *outputList, std::list<simplecpp::MacroUsage> *macroUsage, std::list<simplecpp::IfCond> *ifCond)
 {
 #ifdef SIMPLECPP_WINDOWS
@@ -4334,6 +4355,8 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
     }
 
     std::map<std::string, std::list<Location>> maybeUsedMacros;
+    // usages of macros that are undefined or redefined, handed over only when preprocessing succeeds
+    std::list<MacroUsage> pendingUsage;
 
     for (const Token *rawtok = nullptr; rawtok || !includetokenstack.empty();) {
         if (rawtok == nullptr) {
@@ -4398,10 +4421,12 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                     const Macro &macro = Macro(rawtok->previous, files);
                     if (dui.undefined.find(macro.name()) == dui.undefined.end()) {
                         const MacroMap::iterator it = macros.find(macro.name());
-                        if (it == macros.end())
+                        if (it == macros.end()) {
                             macros.insert(std::pair<TokenString, Macro>(macro.name(), macro));
-                        else
+                        } else {
+                            addMacroUsage(it->second, maybeUsedMacros, macroUsage ? &pendingUsage : nullptr);
                             it->second = macro;
+                        }
                     }
                 } catch (const std::runtime_error &err) {
                     if (outputList) {
@@ -4690,8 +4715,13 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                     const Token *tok = rawtok->next;
                     while (sameline(rawtok,tok) && tok->comment)
                         tok = tok->next;
-                    if (sameline(rawtok, tok))
-                        macros.erase(tok->str());
+                    if (sameline(rawtok, tok)) {
+                        const MacroMap::iterator it = macros.find(tok->str());
+                        if (it != macros.end()) {
+                            addMacroUsage(it->second, maybeUsedMacros, macroUsage ? &pendingUsage : nullptr);
+                            macros.erase(it);
+                        }
+                    }
                 }
             } else if (ifstates.top() == True && rawtok->str() == PRAGMA && rawtok->next && rawtok->next->str() == ONCE && sameline(rawtok,rawtok->next)) {
                 pragmaOnce.insert(rawtokens.file(rawtok->location));
@@ -4744,20 +4774,9 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
     }
 
     if (macroUsage) {
-        for (simplecpp::MacroMap::const_iterator macroIt = macros.begin(); macroIt != macros.end(); ++macroIt) {
-            const Macro &macro = macroIt->second;
-            std::list<Macro::Usage> usage = macro.usage();
-            const std::list<Location>& temp = maybeUsedMacros[macro.name()];
-            usage.insert(usage.end(), temp.begin(), temp.end());
-            for (std::list<Macro::Usage>::iterator usageIt = usage.begin(); usageIt != usage.end(); ++usageIt) {
-                MacroUsage mu(macro.valueDefinedInCode());
-                mu.macroName = macro.name();
-                mu.macroLocation = macro.defineLocation();
-                mu.useLocation = usageIt->location;
-                mu.arg = std::move(usageIt->arg);
-                macroUsage->emplace_back(std::move(mu));
-            }
-        }
+        macroUsage->splice(macroUsage->end(), pendingUsage);
+        for (simplecpp::MacroMap::const_iterator macroIt = macros.begin(); macroIt != macros.end(); ++macroIt)
+            addMacroUsage(macroIt->second, maybeUsedMacros, macroUsage);
     }
 }
 
