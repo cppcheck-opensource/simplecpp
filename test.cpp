@@ -5015,6 +5015,47 @@ static void tokenMacro15()
     ASSERT_EQUALS("D 1:1 use 1:3 unknown\n", toString(macroUsage));
 }
 
+static void tokenMacro16()
+{
+    // a function-like macro name without ( is not expanded, so it is not a usage
+    const char code[] = "#define F(x) x\n"
+                        "int F = F(1);\n";
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("int(2:1) F(2:5) =(2:7) 1(2:9) ;(2:13)", expandedTokens(code, simplecpp::DUI(), &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 2:9\n", toString(macroUsage));
+}
+
+static void tokenMacro17()
+{
+    // a function-like macro name without ( in #if is a usage, also when the macro is defined before
+    std::list<simplecpp::MacroUsage> macroUsage;
+    preprocess("#define F(x) 1\n#if F\n#endif\n", &macroUsage);
+    ASSERT_EQUALS("F 1:9 use 2:5\n", toString(macroUsage));
+    macroUsage.clear();
+    preprocess("#define F(x) 1\n#if 0\n#elif F || 1\n#endif\n", &macroUsage);
+    ASSERT_EQUALS("F 1:9 use 3:7\n", toString(macroUsage));
+    macroUsage.clear();
+    preprocess("#define F(x) 1\n#if F(0)\n#endif\n", &macroUsage);
+    ASSERT_EQUALS("F 1:9 use 2:5\n", toString(macroUsage));
+}
+
+static void tokenMacro18()
+{
+    // a bare function-like macro name in an argument or a replacement list is not a usage
+    std::list<simplecpp::MacroUsage> macroUsage;
+    ASSERT_EQUALS("\n\nF ;", preprocess("#define F(x) x\n#define G(a) a\nG(F);\n", &macroUsage));
+    ASSERT_EQUALS("G 2:9 use 3:1\n", toString(macroUsage));
+    macroUsage.clear();
+    ASSERT_EQUALS("\n\nF F 5 ;", preprocess("#define F(x) x\n#define H(a) a F a(5)\nH(F);\n", &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 3:1\nH 2:9 use 3:1\n", toString(macroUsage));
+    macroUsage.clear();
+    ASSERT_EQUALS("\n1", preprocess("#define F(x) x\nF\n(1)\n", &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 2:1\n", toString(macroUsage));
+    macroUsage.clear();
+    ASSERT_EQUALS("\nF ; 1 ;", preprocess("#define F() 1\nF; F();\n", &macroUsage));
+    ASSERT_EQUALS("F 1:9 use 2:4\n", toString(macroUsage));
+}
+
 /** The argument of each macro usage as "name use line:col: [arg]", sorted. */
 static std::string argToString(const std::list<simplecpp::MacroUsage> &macroUsage)
 {
@@ -5064,9 +5105,9 @@ static void macroUsageArg3()
 
 static void macroUsageArg4()
 {
-    // object-like macro and function-like macro name without call have no argument
+    // object-like macro has no argument, function-like macro name without call is no usage
     ASSERT_EQUALS("INT64_C use 2:1: []\n", macroUsageArg("#define INT64_C 1\nINT64_C\n"));
-    ASSERT_EQUALS("INT64_C use 2:1: []\n", macroUsageArg("#define INT64_C(x) x\nINT64_C;\n"));
+    ASSERT_EQUALS("", macroUsageArg("#define INT64_C(x) x\nINT64_C;\n"));
 }
 
 static void macroUsageArg5()
@@ -6243,6 +6284,9 @@ static void runTests(int argc, char **argv, Input input)
     TEST_CASE(tokenMacro13);
     TEST_CASE(tokenMacro14);
     TEST_CASE(tokenMacro15);
+    TEST_CASE(tokenMacro16);
+    TEST_CASE(tokenMacro17);
+    TEST_CASE(tokenMacro18);
     TEST_CASE(macroUsageArg1);
     TEST_CASE(macroUsageArg2);
     TEST_CASE(macroUsageArg3);

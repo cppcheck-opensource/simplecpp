@@ -2398,6 +2398,12 @@ namespace simplecpp {
             std::cout << "  expand " << name() << " " << locstring(defineLocation()) << std::endl;
 #endif
 
+            // No arguments => not macro expansion
+            if (functionLike() && nameTokInst->next && nameTokInst->next->op != '(') {
+                output.push_back(new Token(nameTokInst->str(), loc));
+                return nameTokInst->next;
+            }
+
             usageList.emplace_back(loc);
 
             if (expandBuiltin(output, loc, nameTokInst))
@@ -2406,13 +2412,7 @@ namespace simplecpp {
             const bool calledInDefine = (loc.fileIndex != nameTokInst->location.fileIndex ||
                                          loc.line < nameTokInst->location.line);
 
-            // No arguments => not macro expansion
-            if (functionLike() && nameTokInst->next && nameTokInst->next->op != '(') {
-                output.push_back(new Token(nameTokInst->str(), loc));
-                return nameTokInst->next;
-            }
-
-            if (functionLike() && nameTokInst->next && nameTokInst->next->op == '(' && isIntegerConstantMacro(name()))
+            if (functionLike() && nameTokInst->next && isIntegerConstantMacro(name()))
                 usageList.back().arg = writtenArgument(nameTokInst, calledInDefine);
 
             std::vector<const Token*> parametertokens1(getMacroParameters(nameTokInst, calledInDefine));
@@ -4645,8 +4645,10 @@ void simplecpp::preprocess(simplecpp::TokenList &output, const simplecpp::TokenL
                             continue;
                         }
 
-                        // usage of defined macros is recorded when they are expanded
-                        if (macros.find(tok->str()) == macros.end())
+                        // usage of defined macros is recorded when they are expanded,
+                        // but a function-like macro without ( is not expanded
+                        const MacroMap::const_iterator macroIt = macros.find(tok->str());
+                        if (macroIt == macros.end() || (macroIt->second.functionLike() && tok->next && tok->next->op != '('))
                             maybeUsedMacros[tok->str()].emplace_back(tok->location);
 
                         const Token *tmp = tok;
