@@ -1,12 +1,12 @@
 ---
 Checks: >
         *,
+        clang-analyzer-*,
         -abseil-*,
         -altera-*,
         -android-*,
         -boost-*,
         -cert-*,
-        -clang-analyzer-*,
         -cppcoreguidelines-*,
         -fuchsia-*,
         -google-*,
@@ -25,6 +25,7 @@ Checks: >
         -bugprone-throwing-static-initialization,
         -bugprone-unchecked-string-to-number-conversion,
         -concurrency-mt-unsafe,
+        -clang-analyzer-cplusplus.NewDelete,
         -misc-no-recursion,
         -misc-non-private-member-variables-in-classes,
         -misc-use-anonymous-namespace,
